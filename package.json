@@ -1,0 +1,13 @@
+{
+  "name": "dungeon-tower-test",
+  "version": "1.0.0",
+  "description": "AI auto-test environment for 3D Dungeon RPG",
+  "scripts": {
+    "test": "node test/auto-player.js",
+    "test:gui": "node test/auto-player.js --gui",
+    "test:quick": "node test/auto-player.js --floors=1 --time=60"
+  },
+  "dependencies": {
+    "puppeteer": "^22.0.0"
+  }
+}

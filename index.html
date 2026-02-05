@@ -1,0 +1,2253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite Dungeon Tower</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border: 2px solid #666;
+            border-radius: 5px;
+        }
+        #stats h3 {
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+        #stats p {
+            margin: 5px 0;
+        }
+        .stat-bar {
+            width: 150px;
+            height: 15px;
+            background: #333;
+            border: 1px solid #666;
+            margin-top: 3px;
+        }
+        .stat-fill {
+            height: 100%;
+            transition: width 0.3s;
+        }
+        #hp-fill { background: linear-gradient(to right, #ff4444, #ff0000); }
+        #mp-fill { background: linear-gradient(to right, #4444ff, #0000ff); }
+        #inventory {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border: 2px solid #666;
+            border-radius: 5px;
+            max-width: 200px;
+        }
+        #inventory h3 {
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+        .item {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            background: #444;
+            border: 2px solid #888;
+            margin: 2px;
+            text-align: center;
+            line-height: 36px;
+            font-size: 20px;
+            border-radius: 5px;
+        }
+        #inventory-panel {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.92);
+            border: 2px solid #ffd700;
+            border-radius: 12px;
+            padding: 24px;
+            color: #fff;
+            min-width: 320px;
+            pointer-events: auto;
+            z-index: 200;
+        }
+        #inventory-panel.open { display: block; }
+        #inventory-panel h3 {
+            color: #ffd700;
+            margin-bottom: 16px;
+            text-align: center;
+            font-size: 20px;
+        }
+        .inv-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            margin: 6px 0;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid #555;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .inv-item:hover {
+            background: rgba(255,215,0,0.15);
+            border-color: #ffd700;
+        }
+        .inv-item-icon {
+            font-size: 28px;
+            width: 40px;
+            text-align: center;
+        }
+        .inv-item-info { flex: 1; }
+        .inv-item-name { font-weight: bold; font-size: 14px; }
+        .inv-item-desc { font-size: 11px; color: #aaa; margin-top: 2px; }
+        .inv-empty {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+            font-style: italic;
+        }
+        #inv-hint {
+            text-align: center;
+            color: #666;
+            font-size: 11px;
+            margin-top: 12px;
+        }
+        .item.key { border-color: #ffd700; background: #554400; }
+        .item.potion { border-color: #ff4444; background: #440000; }
+        .item.mpPotion { border-color: #4488ff; background: #001144; }
+        .item.shield { border-color: #4444ff; background: #000044; }
+        .item.charm { border-color: #44ff44; background: #004400; }
+        #message {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            background: rgba(0,0,0,0.8);
+            padding: 15px 30px;
+            border: 2px solid #ffd700;
+            border-radius: 10px;
+            font-size: 18px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #message.show { opacity: 1; }
+        #minimap {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid #666;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        #minimap canvas {
+            display: block;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #aaa;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border: 2px solid #666;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        #boss-hp {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            text-align: center;
+            color: #fff;
+            display: none;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 10px;
+            border: 2px solid #ff4444;
+        }
+        #boss-hp h2 {
+            color: #ff4444;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #ff0000;
+            font-size: 18px;
+        }
+        #boss-hp-bar {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border: 2px solid #ff4444;
+            border-radius: 5px;
+        }
+        #boss-hp-fill {
+            height: 100%;
+            background: linear-gradient(to right, #ff0000, #ff4444);
+            border-radius: 3px;
+            transition: width 0.2s;
+        }
+        #title-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #1a0a2e, #0a0a0a);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            pointer-events: auto;
+        }
+        #title-screen h1 {
+            font-size: 48px;
+            color: #ffd700;
+            text-shadow: 0 0 20px #ffd700;
+            margin-bottom: 20px;
+        }
+        #title-screen p {
+            margin: 4px 0;
+            color: #aaa;
+            font-size: 13px;
+        }
+        #title-rules {
+            max-width: 720px;
+            margin: 10px auto;
+            text-align: left;
+        }
+        .rules-columns {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+        }
+        .rules-col {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .rules-col h4 {
+            color: #ffd700;
+            margin: 8px 0 4px;
+            font-size: 13px;
+        }
+        .rules-col h4:first-child { margin-top: 0; }
+        #start-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 24px;
+            background: linear-gradient(to bottom, #ffd700, #aa8800);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        #start-btn:hover {
+            background: linear-gradient(to bottom, #ffee00, #ccaa00);
+        }
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            pointer-events: auto;
+        }
+        #game-over h1 {
+            font-size: 48px;
+            color: #ff4444;
+            margin-bottom: 20px;
+        }
+        #game-over p {
+            margin: 10px 0;
+            font-size: 20px;
+        }
+        #retry-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background: linear-gradient(to bottom, #ff4444, #aa0000);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.7);
+        }
+        #crosshair::before {
+            width: 2px;
+            height: 20px;
+            left: 9px;
+        }
+        #crosshair::after {
+            width: 20px;
+            height: 2px;
+            top: 9px;
+        }
+        .damage-number {
+            position: absolute;
+            color: #ff4444;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 2px #000;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+        }
+        .damage-number.heal {
+            color: #44ff44;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-50px); }
+        }
+        #attack-effect {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            opacity: 0;
+            pointer-events: none;
+        }
+        #attack-effect.active {
+            animation: attackPulse 0.2s ease-out;
+        }
+        @keyframes attackPulse {
+            0% { opacity: 0.8; transform: translate(-50%, -50%) scale(0.5); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui">
+            <div id="stats">
+                <h3>Floor <span id="floor-num">1</span></h3>
+                <p>HP: <span id="hp-val">100</span>/<span id="hp-max">100</span></p>
+                <div class="stat-bar"><div class="stat-fill" id="hp-fill" style="width:100%"></div></div>
+                <p>MP: <span id="mp-val">50</span>/<span id="mp-max">50</span></p>
+                <div class="stat-bar"><div class="stat-fill" id="mp-fill" style="width:100%"></div></div>
+                <p>ATK: <span id="atk-val">10</span></p>
+                <p>Enemies: <span id="enemy-count">0</span></p>
+            </div>
+            <div id="inventory">
+                <h3>Items</h3>
+                <div id="item-list"></div>
+                <p style="font-size:11px;margin-top:10px;color:#888">Boss Key needed to fight boss</p>
+            </div>
+            <div id="minimap">
+                <canvas id="minimap-canvas" width="150" height="150"></canvas>
+            </div>
+            <div id="controls">
+                <p>WASD - Move</p>
+                <p>Mouse - Look</p>
+                <p>Click - Attack</p>
+                <p>E - Interact</p>
+                <p>TAB - Inventory</p>
+            </div>
+            <div id="inventory-panel">
+                <h3>INVENTORY</h3>
+                <div id="inv-items"></div>
+                <div id="inv-hint">Click item to use / TAB to close</div>
+            </div>
+            <div id="crosshair"></div>
+            <div id="attack-effect"></div>
+            <div id="message"></div>
+            <div id="boss-hp">
+                <h2 id="boss-name">FLOOR GUARDIAN</h2>
+                <div id="boss-hp-bar">
+                    <div id="boss-hp-fill" style="width:100%"></div>
+                </div>
+            </div>
+            <div id="title-screen">
+                <h1>INFINITE DUNGEON TOWER</h1>
+                <div id="title-rules">
+                    <div class="rules-columns">
+                        <div class="rules-col">
+                            <h4>CONTROLS</h4>
+                            <p>WASD - Move</p>
+                            <p>Mouse - Look around</p>
+                            <p>Left Click - Attack</p>
+                            <p>E - Interact</p>
+                            <p>TAB - Open Inventory</p>
+                        </div>
+                        <div class="rules-col">
+                            <h4>OBJECTIVE</h4>
+                            <p>Find the Boss Key, then defeat the Floor Boss to ascend.</p>
+                            <h4>COMBAT TIPS</h4>
+                            <p>Backstab: Attack boss from behind for 2x damage</p>
+                            <p>Combo: Hit within 2s for up to +75% bonus</p>
+                            <p>Dodge: Boss flashes red before a special attack &mdash; get away!</p>
+                        </div>
+                        <div class="rules-col">
+                            <h4>MAP FEATURES</h4>
+                            <p>Shrine: Grants ATK+5 &amp; MaxHP+20</p>
+                            <p>Minimap reveals as you explore and fades over time</p>
+                            <h4>ENEMIES</h4>
+                            <p>Skeleton - Standard</p>
+                            <p>Slime - Splits on death</p>
+                            <p>Wraith - Phases through walls</p>
+                            <p>Golem - Slow but powerful</p>
+                        </div>
+                    </div>
+                </div>
+                <button id="start-btn">START GAME</button>
+            </div>
+            <div id="game-over">
+                <h1>GAME OVER</h1>
+                <p>You reached Floor <span id="final-floor">1</span></p>
+                <p>Enemies defeated: <span id="final-kills">0</span></p>
+                <button id="retry-btn">TRY AGAIN</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game State
+        const game = {
+            floor: 1,
+            hp: 100,
+            maxHp: 100,
+            mp: 50,
+            maxMp: 50,
+            atk: 10,
+            items: [],
+            hasBossKey: false,
+            totalKills: 0,
+            isPlaying: false,
+            bossActive: false,
+            comboCount: 0,
+            lastHitTime: 0,
+            shrineUsed: false,
+            shrineBuff: false,
+            shieldBuff: false,
+            shieldBuffTime: 0
+        };
+
+        // Enemy type definitions
+        const ENEMY_TYPES = {
+            skeleton: {
+                name: 'Skeleton',
+                color: 0xccccaa, emissive: 0x222200,
+                eyeColor: 0xffff00,
+                size: { w: 0.6, h: 1.6, d: 0.4 },
+                hpMult: 1.0, atkMult: 1.0, speedMult: 1.0
+            },
+            slime: {
+                name: 'Slime',
+                color: 0x44cc44, emissive: 0x003300,
+                eyeColor: 0x88ff88,
+                size: { w: 0.9, h: 0.7, d: 0.9 },
+                hpMult: 0.7, atkMult: 0.6, speedMult: 0.7,
+                splitOnDeath: true
+            },
+            wraith: {
+                name: 'Wraith',
+                color: 0x6666cc, emissive: 0x110033,
+                eyeColor: 0xcc66ff,
+                size: { w: 0.7, h: 1.8, d: 0.5 },
+                hpMult: 0.8, atkMult: 1.3, speedMult: 1.4,
+                transparent: true
+            },
+            golem: {
+                name: 'Golem',
+                color: 0x888877, emissive: 0x111100,
+                eyeColor: 0xff8800,
+                size: { w: 1.1, h: 1.4, d: 1.1 },
+                hpMult: 2.0, atkMult: 1.5, speedMult: 0.5
+            }
+        };
+
+        // Boss type definitions
+        const BOSS_TYPES = {
+            guardian: {
+                name: 'GUARDIAN',
+                color: 0x660066, emissive: 0x220022,
+                eyeColor: 0xff00ff,
+                hpMult: 1.0, atkMult: 1.0, speedMult: 1.0,
+                slamAttack: true,
+                telegraphTime: 2000
+            },
+            sorcerer: {
+                name: 'SORCERER',
+                color: 0x2222aa, emissive: 0x000044,
+                eyeColor: 0x00ccff,
+                hpMult: 0.8, atkMult: 1.3, speedMult: 0.8,
+                projectileAttack: true,
+                teleport: true,
+                telegraphTime: 1500
+            },
+            berserker: {
+                name: 'BERSERKER',
+                color: 0xaa2222, emissive: 0x440000,
+                eyeColor: 0xff4400,
+                hpMult: 1.2, atkMult: 0.8, speedMult: 1.2,
+                enrage: true,
+                telegraphTime: 1800
+            }
+        };
+
+        // Three.js setup
+        let scene, camera, renderer;
+        let dungeon = { walls: [], floor: null, ceiling: null };
+        let enemies = [];
+        let items = [];
+        let boss = null;
+        let stairs = null;
+        let stairsLight = null;
+        let shrine = null;
+        let shrineLight = null;
+        let bossProjectiles = [];
+        let mapMemory = [];      // 2D array: memory strength per cell (0.0 = unknown, 1.0 = fresh)
+        const MEMORY_VIEW_RADIUS = 4;   // cells visible around player
+        const MEMORY_DECAY_RATE = 0.0003; // per frame decay
+        const MEMORY_MIN_VISIBLE = 0.05;  // below this, cell is invisible
+        let playerPos = { x: 1.5, z: 1.5 };
+        let playerAngle = 0;
+        let playerPitch = 0;
+        let map = [];
+        let mapSize = 15;
+        let cellSize = 3;
+
+        // Controls
+        const keys = {};
+        let isPointerLocked = false;
+        let inventoryOpen = false;
+
+        // Initialize
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+            scene.fog = new THREE.Fog(0x0a0a0a, 5, 25);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.y = 1.5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').insertBefore(renderer.domElement, document.getElementById('ui'));
+
+            // Lighting
+            const ambient = new THREE.AmbientLight(0x222222);
+            scene.add(ambient);
+
+            const playerLight = new THREE.PointLight(0xffaa55, 1, 15);
+            playerLight.position.set(0, 1.5, 0);
+            camera.add(playerLight);
+            scene.add(camera);
+
+            // Event listeners
+            document.addEventListener('keydown', (e) => {
+                // TAB toggles inventory
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (game.isPlaying) toggleInventory();
+                    return;
+                }
+
+                // Close inventory on Escape
+                if (e.key === 'Escape' && inventoryOpen) {
+                    toggleInventory();
+                    return;
+                }
+
+                // Block game input while inventory is open
+                if (inventoryOpen) return;
+
+                keys[e.key.toLowerCase()] = true;
+                if (e.key.toLowerCase() === 'e') {
+                    interact();
+                }
+            });
+            document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            document.addEventListener('click', onClick);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('pointerlockchange', () => {
+                isPointerLocked = document.pointerLockElement === renderer.domElement;
+            });
+
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('retry-btn').addEventListener('click', startGame);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            animate();
+        }
+
+        function startGame() {
+            game.floor = 1;
+            game.hp = 100;
+            game.maxHp = 100;
+            game.mp = 50;
+            game.maxMp = 50;
+            game.atk = 10;
+            game.items = [];
+            game.hasBossKey = false;
+            game.totalKills = 0;
+            game.isPlaying = true;
+            game.bossActive = false;
+            game.comboCount = 0;
+            game.lastHitTime = 0;
+            game.shrineUsed = false;
+            game.shrineBuff = false;
+            game.shieldBuff = false;
+            game.shieldBuffTime = 0;
+
+            document.getElementById('title-screen').style.display = 'none';
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('boss-hp').style.display = 'none';
+            document.getElementById('inventory-panel').classList.remove('open');
+            inventoryOpen = false;
+
+            generateDungeon();
+            if (!window._autoTestMode) {
+                renderer.domElement.requestPointerLock();
+            }
+        }
+
+        function generateDungeon() {
+            // Clear previous dungeon
+            dungeon.walls.forEach(w => scene.remove(w));
+            dungeon.walls = [];
+            if (dungeon.floor) scene.remove(dungeon.floor);
+            if (dungeon.ceiling) scene.remove(dungeon.ceiling);
+            enemies.forEach(e => scene.remove(e.mesh));
+            enemies = [];
+            items.forEach(i => {
+                scene.remove(i.mesh);
+                scene.remove(i.light);
+            });
+            items = [];
+            if (boss) { scene.remove(boss.mesh); boss = null; }
+            if (stairs) { scene.remove(stairs); stairs = null; }
+            if (stairsLight) { scene.remove(stairsLight); stairsLight = null; }
+            if (shrine) { scene.remove(shrine); shrine = null; }
+            if (shrineLight) { scene.remove(shrineLight); shrineLight = null; }
+            bossProjectiles.forEach(p => scene.remove(p.mesh));
+            bossProjectiles = [];
+            game.shrineUsed = false;
+            game.shrineBuff = false;
+            hideTelegraphWarning();
+
+            // Adjust dungeon size based on floor (always odd for maze algorithm)
+            mapSize = 15 + Math.floor(game.floor / 3) * 2;
+            if (mapSize > 31) mapSize = 31;
+            if (mapSize % 2 === 0) mapSize++; // Ensure odd size
+
+            // Generate map using maze algorithm (iterative to avoid stack overflow)
+            map = generateMazeIterative(mapSize, mapSize);
+
+            // Initialize fog of war memory
+            mapMemory = Array(mapSize).fill(null).map(() => Array(mapSize).fill(0));
+
+            // Create 3D geometry
+            const wallMaterial = new THREE.MeshStandardMaterial({
+                color: 0x444444 + (game.floor * 0x050505) % 0x333333,
+                roughness: 0.8
+            });
+            const floorMaterial = new THREE.MeshStandardMaterial({
+                color: 0x222222,
+                roughness: 0.9
+            });
+
+            // Floor
+            const floorGeom = new THREE.PlaneGeometry(mapSize * cellSize, mapSize * cellSize);
+            dungeon.floor = new THREE.Mesh(floorGeom, floorMaterial);
+            dungeon.floor.rotation.x = -Math.PI / 2;
+            dungeon.floor.position.set(mapSize * cellSize / 2, 0, mapSize * cellSize / 2);
+            dungeon.floor.receiveShadow = true;
+            scene.add(dungeon.floor);
+
+            // Ceiling
+            const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+            dungeon.ceiling = new THREE.Mesh(floorGeom.clone(), ceilingMaterial);
+            dungeon.ceiling.rotation.x = Math.PI / 2;
+            dungeon.ceiling.position.set(mapSize * cellSize / 2, 3, mapSize * cellSize / 2);
+            scene.add(dungeon.ceiling);
+
+            // Walls
+            const wallGeom = new THREE.BoxGeometry(cellSize, 3, cellSize);
+            for (let z = 0; z < mapSize; z++) {
+                for (let x = 0; x < mapSize; x++) {
+                    if (map[z][x] === 1) {
+                        const wall = new THREE.Mesh(wallGeom, wallMaterial);
+                        wall.position.set(x * cellSize + cellSize/2, 1.5, z * cellSize + cellSize/2);
+                        wall.castShadow = true;
+                        wall.receiveShadow = true;
+                        scene.add(wall);
+                        dungeon.walls.push(wall);
+                    }
+                }
+            }
+
+            // Find spawn positions
+            const openSpaces = [];
+            for (let z = 1; z < mapSize - 1; z++) {
+                for (let x = 1; x < mapSize - 1; x++) {
+                    if (map[z][x] === 0) {
+                        openSpaces.push({ x, z });
+                    }
+                }
+            }
+
+            // Shuffle open spaces
+            shuffleArray(openSpaces);
+
+            if (openSpaces.length < 10) {
+                console.error("Not enough open spaces, regenerating...");
+                generateDungeon();
+                return;
+            }
+
+            // Player spawn
+            const playerSpawn = openSpaces.shift();
+            playerPos.x = playerSpawn.x * cellSize + cellSize/2;
+            playerPos.z = playerSpawn.z * cellSize + cellSize/2;
+
+            // Boss spawn (far from player)
+            openSpaces.sort((a, b) => {
+                const distA = Math.abs(a.x - playerSpawn.x) + Math.abs(a.z - playerSpawn.z);
+                const distB = Math.abs(b.x - playerSpawn.x) + Math.abs(b.z - playerSpawn.z);
+                return distB - distA;
+            });
+            const bossSpawn = openSpaces.shift();
+            spawnBoss(bossSpawn.x * cellSize + cellSize/2, bossSpawn.z * cellSize + cellSize/2);
+
+            // Re-shuffle remaining spaces
+            shuffleArray(openSpaces);
+
+            // Spawn enemies
+            const enemyCount = Math.min(5 + game.floor * 2, openSpaces.length - 10);
+            for (let i = 0; i < enemyCount && openSpaces.length > 5; i++) {
+                const pos = openSpaces.shift();
+                spawnEnemy(pos.x * cellSize + cellSize/2, pos.z * cellSize + cellSize/2);
+            }
+
+            // Spawn boss key
+            if (openSpaces.length > 0) {
+                const keyPos = openSpaces.shift();
+                spawnItem(keyPos.x * cellSize + cellSize/2, keyPos.z * cellSize + cellSize/2, 'key');
+            }
+            game.hasBossKey = false;
+
+            // Spawn shrine (far from player)
+            if (openSpaces.length > 5) {
+                // Sort by distance to player (descending) and pick a far spot
+                const playerSpawnForShrine = { x: Math.floor(playerPos.x / cellSize), z: Math.floor(playerPos.z / cellSize) };
+                const farSpaces = [...openSpaces].sort((a, b) => {
+                    const distA = Math.abs(a.x - playerSpawnForShrine.x) + Math.abs(a.z - playerSpawnForShrine.z);
+                    const distB = Math.abs(b.x - playerSpawnForShrine.x) + Math.abs(b.z - playerSpawnForShrine.z);
+                    return distB - distA;
+                });
+                const shrinePos = farSpaces[0];
+                const sx = shrinePos.x * cellSize + cellSize / 2;
+                const sz = shrinePos.z * cellSize + cellSize / 2;
+
+                const shrineGeom = new THREE.CylinderGeometry(0.4, 0.5, 1.2, 6);
+                const shrineMat = new THREE.MeshStandardMaterial({
+                    color: 0xffdd00,
+                    emissive: 0x554400,
+                    emissiveIntensity: 0.5
+                });
+                shrine = new THREE.Mesh(shrineGeom, shrineMat);
+                shrine.position.set(sx, 0.6, sz);
+                scene.add(shrine);
+
+                shrineLight = new THREE.PointLight(0xffdd00, 0.6, 6);
+                shrineLight.position.set(sx, 1.5, sz);
+                scene.add(shrineLight);
+
+                // Remove from openSpaces so nothing else spawns here
+                const idx = openSpaces.indexOf(shrinePos);
+                if (idx !== -1) openSpaces.splice(idx, 1);
+            }
+
+            // Spawn potions and items
+            const itemCount = Math.min(3 + Math.floor(game.floor / 2), openSpaces.length - 5);
+            for (let i = 0; i < itemCount && openSpaces.length > 0; i++) {
+                const pos = openSpaces.shift();
+                const r = Math.random();
+                let itemType;
+                if (r < 0.4) itemType = 'potion';
+                else if (r < 0.6) itemType = 'mpPotion';
+                else if (r < 0.8) itemType = 'shield';
+                else itemType = 'charm';
+                spawnItem(pos.x * cellSize + cellSize/2, pos.z * cellSize + cellSize/2, itemType);
+            }
+
+            // Add torches for lighting
+            const torchCount = Math.min(10, openSpaces.length);
+            for (let i = 0; i < torchCount; i++) {
+                const pos = openSpaces[i];
+                if (pos) {
+                    const torch = new THREE.PointLight(0xff6600, 0.5, 10);
+                    torch.position.set(pos.x * cellSize + cellSize/2, 2.5, pos.z * cellSize + cellSize/2);
+                    scene.add(torch);
+                    dungeon.walls.push(torch);
+                }
+            }
+
+            updateUI();
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        // Iterative maze generation to avoid stack overflow
+        function generateMazeIterative(width, height) {
+            const maze = Array(height).fill().map(() => Array(width).fill(1));
+            const stack = [];
+            const startX = 1;
+            const startY = 1;
+
+            maze[startY][startX] = 0;
+            stack.push({ x: startX, y: startY });
+
+            const directions = [[0, -2], [0, 2], [-2, 0], [2, 0]];
+
+            while (stack.length > 0) {
+                const current = stack[stack.length - 1];
+                const { x, y } = current;
+
+                // Find unvisited neighbors
+                const neighbors = [];
+                for (const [dx, dy] of directions) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx > 0 && nx < width - 1 && ny > 0 && ny < height - 1 && maze[ny][nx] === 1) {
+                        neighbors.push({ nx, ny, dx, dy });
+                    }
+                }
+
+                if (neighbors.length > 0) {
+                    // Choose random neighbor
+                    const { nx, ny, dx, dy } = neighbors[Math.floor(Math.random() * neighbors.length)];
+
+                    // Remove wall between current and neighbor
+                    maze[y + dy / 2][x + dx / 2] = 0;
+                    maze[ny][nx] = 0;
+
+                    stack.push({ x: nx, y: ny });
+                } else {
+                    stack.pop();
+                }
+            }
+
+            // Add some extra passages for more open layout
+            const extraPassages = Math.floor((width * height) / 10);
+            for (let i = 0; i < extraPassages; i++) {
+                const x = Math.floor(Math.random() * (width - 2)) + 1;
+                const y = Math.floor(Math.random() * (height - 2)) + 1;
+                maze[y][x] = 0;
+            }
+
+            return maze;
+        }
+
+        function pickEnemyType() {
+            const types = Object.keys(ENEMY_TYPES);
+            // Floor-based weights: early floors favor skeleton/slime, later add wraith/golem
+            const weights = {
+                skeleton: 1.0,
+                slime: 0.8,
+                wraith: game.floor >= 2 ? 0.6 : 0.1,
+                golem: game.floor >= 3 ? 0.5 : 0.05
+            };
+            const totalWeight = types.reduce((s, t) => s + (weights[t] || 0.5), 0);
+            let r = Math.random() * totalWeight;
+            for (const t of types) {
+                r -= weights[t] || 0.5;
+                if (r <= 0) return t;
+            }
+            return 'skeleton';
+        }
+
+        function spawnEnemy(x, z, type, overrides) {
+            if (!type) type = pickEnemyType();
+            const def = ENEMY_TYPES[type] || ENEMY_TYPES.skeleton;
+
+            let geometry;
+            if (type === 'slime') {
+                geometry = new THREE.SphereGeometry(def.size.w / 2, 8, 8);
+            } else {
+                geometry = new THREE.BoxGeometry(def.size.w, def.size.h, def.size.d);
+            }
+
+            const material = new THREE.MeshStandardMaterial({
+                color: def.color,
+                emissive: def.emissive
+            });
+            if (def.transparent) {
+                material.transparent = true;
+                material.opacity = 0.6;
+            }
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, def.size.h / 2, z);
+            mesh.castShadow = true;
+            scene.add(mesh);
+
+            // Eyes
+            const eyeScale = type === 'golem' ? 0.15 : 0.1;
+            const eyeGeom = new THREE.SphereGeometry(eyeScale);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: def.eyeColor });
+            const eye1 = new THREE.Mesh(eyeGeom, eyeMat);
+            const eye2 = new THREE.Mesh(eyeGeom, eyeMat);
+            const eyeSpread = def.size.w * 0.3;
+            const eyeForward = def.size.d * 0.8;
+            const eyeHeight = def.size.h * 0.25;
+            eye1.position.set(-eyeSpread, eyeHeight, eyeForward);
+            eye2.position.set(eyeSpread, eyeHeight, eyeForward);
+            mesh.add(eye1);
+            mesh.add(eye2);
+
+            const baseHp = 20 + game.floor * 5;
+            const baseAtk = 5 + game.floor * 2;
+            const baseSpeed = 0.02 + game.floor * 0.002;
+
+            enemies.push({
+                mesh,
+                type,
+                hp: Math.round((overrides && overrides.hp) || baseHp * def.hpMult),
+                maxHp: Math.round((overrides && overrides.hp) || baseHp * def.hpMult),
+                atk: Math.round((overrides && overrides.atk) || baseAtk * def.atkMult),
+                speed: baseSpeed * def.speedMult,
+                lastAttack: 0,
+                isSplit: (overrides && overrides.isSplit) || false,
+                lastJump: 0
+            });
+        }
+
+        function pickBossType() {
+            const types = ['guardian', 'sorcerer', 'berserker'];
+            return types[game.floor % 3];
+        }
+
+        function spawnBoss(x, z) {
+            const bossType = pickBossType();
+            const def = BOSS_TYPES[bossType];
+
+            const geometry = new THREE.BoxGeometry(2, 3, 2);
+            const material = new THREE.MeshStandardMaterial({
+                color: def.color,
+                emissive: def.emissive
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, 1.5, z);
+            mesh.castShadow = true;
+            scene.add(mesh);
+
+            // Boss eyes
+            const eyeGeom = new THREE.SphereGeometry(0.2);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: def.eyeColor });
+            const eye1 = new THREE.Mesh(eyeGeom, eyeMat);
+            const eye2 = new THREE.Mesh(eyeGeom, eyeMat);
+            eye1.position.set(-0.4, 0.5, 1);
+            eye2.position.set(0.4, 0.5, 1);
+            mesh.add(eye1);
+            mesh.add(eye2);
+
+            // Crown
+            const crownGeom = new THREE.ConeGeometry(0.3, 0.5, 4);
+            const crownMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0x554400 });
+            for (let i = 0; i < 3; i++) {
+                const crown = new THREE.Mesh(crownGeom, crownMat);
+                crown.position.set(-0.5 + i * 0.5, 1.7, 0);
+                mesh.add(crown);
+            }
+
+            const baseHp = 100 + game.floor * 50;
+            const baseAtk = 15 + game.floor * 5;
+
+            boss = {
+                mesh,
+                type: bossType,
+                hp: Math.round(baseHp * def.hpMult),
+                maxHp: Math.round(baseHp * def.hpMult),
+                atk: Math.round(baseAtk * def.atkMult),
+                baseAtk: Math.round(baseAtk * def.atkMult),
+                speedMult: def.speedMult,
+                active: false,
+                lastAttack: 0,
+                attackCount: 0,
+                phase: 1,
+                telegraphing: false,
+                telegraphStart: 0,
+                telegraphTime: def.telegraphTime || 2000,
+                originalEmissive: def.emissive,
+                enraged: false,
+                stunned: false,
+                stunEnd: 0
+            };
+
+            document.getElementById('boss-name').textContent = `FLOOR ${game.floor} ${def.name}`;
+        }
+
+        function spawnItem(x, z, type) {
+            let geometry, color;
+
+            switch (type) {
+                case 'key':
+                    geometry = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
+                    color = 0xffd700;
+                    break;
+                case 'potion':
+                    geometry = new THREE.CylinderGeometry(0.15, 0.2, 0.4, 8);
+                    color = 0xff4444;
+                    break;
+                case 'mpPotion':
+                    geometry = new THREE.CylinderGeometry(0.15, 0.2, 0.4, 8);
+                    color = 0x4488ff;
+                    break;
+                case 'shield':
+                    geometry = new THREE.BoxGeometry(0.4, 0.5, 0.1);
+                    color = 0x4444ff;
+                    break;
+                case 'charm':
+                    geometry = new THREE.OctahedronGeometry(0.25);
+                    color = 0x44ff44;
+                    break;
+            }
+
+            const material = new THREE.MeshStandardMaterial({
+                color,
+                emissive: color,
+                emissiveIntensity: 0.3
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, 0.5, z);
+            scene.add(mesh);
+
+            // Add glow
+            const light = new THREE.PointLight(color, 0.3, 3);
+            light.position.set(x, 0.5, z);
+            scene.add(light);
+
+            items.push({ mesh, light, type, x, z });
+        }
+
+        function onClick(e) {
+            if (!game.isPlaying) return;
+            if (inventoryOpen) return; // Don't attack while inventory is open
+
+            if (!isPointerLocked) {
+                renderer.domElement.requestPointerLock();
+                return;
+            }
+
+            // Attack
+            attack();
+        }
+
+        function showAttackEffect() {
+            const effect = document.getElementById('attack-effect');
+            effect.classList.remove('active');
+            void effect.offsetWidth; // Trigger reflow
+            effect.classList.add('active');
+        }
+
+        function showDamageNumber(x, y, damage, isHeal = false) {
+            const el = document.createElement('div');
+            el.className = 'damage-number' + (isHeal ? ' heal' : '');
+            el.textContent = (isHeal ? '+' : '-') + damage;
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            document.getElementById('ui').appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        function getComboMultiplier() {
+            const now = Date.now();
+            if (now - game.lastHitTime > 2000) {
+                game.comboCount = 0;
+            }
+            return 1 + Math.min(game.comboCount, 5) * 0.15;
+        }
+
+        function registerHit() {
+            const now = Date.now();
+            if (now - game.lastHitTime <= 2000) {
+                game.comboCount = Math.min(game.comboCount + 1, 5);
+            } else {
+                game.comboCount = 1;
+            }
+            game.lastHitTime = now;
+            updateComboUI();
+        }
+
+        function isBackstab(targetMesh) {
+            // Compare player's attack direction vs boss facing direction
+            // Player attacks from behind if angle between attack direction and boss facing > 120°
+            const attackDir = playerAngle; // player faces this direction
+            const bossDir = targetMesh.rotation.y;
+            let diff = attackDir - bossDir;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            // Backstab if within ±60° of the boss's back (i.e., diff close to 0 means same direction = behind)
+            return Math.abs(diff) < Math.PI / 3;
+        }
+
+        function showBackstabMessage() {
+            const el = document.createElement('div');
+            el.style.cssText = 'position:absolute;top:35%;left:50%;transform:translate(-50%,-50%);' +
+                'color:#ffd700;font-size:32px;font-weight:bold;text-shadow:0 0 10px #ffd700;' +
+                'pointer-events:none;z-index:100;';
+            el.textContent = 'BACKSTAB!';
+            document.getElementById('ui').appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        function updateComboUI() {
+            let comboEl = document.getElementById('combo-counter');
+            if (!comboEl) {
+                comboEl = document.createElement('div');
+                comboEl.id = 'combo-counter';
+                comboEl.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);' +
+                    'color:#ff8800;font-size:24px;font-weight:bold;text-shadow:0 0 10px #ff8800;' +
+                    'pointer-events:none;z-index:100;transition:opacity 0.3s;';
+                document.getElementById('ui').appendChild(comboEl);
+            }
+            if (game.comboCount >= 2) {
+                comboEl.textContent = `COMBO x${game.comboCount} (+${Math.min(game.comboCount, 5) * 15}%)`;
+                comboEl.style.opacity = '1';
+            } else {
+                comboEl.style.opacity = '0';
+            }
+        }
+
+        function attack() {
+            if (game.mp < 5) {
+                showMessage("Not enough MP!");
+                return;
+            }
+            game.mp -= 5;
+            showAttackEffect();
+
+            const comboMult = getComboMultiplier();
+            const attackRange = 3;
+            const attackAngle = Math.PI / 4;
+            let hitSomething = false;
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const dx = enemy.mesh.position.x - playerPos.x;
+                const dz = enemy.mesh.position.z - playerPos.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < attackRange) {
+                    const angle = Math.atan2(dx, dz);
+                    let angleDiff = angle - playerAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+                    if (Math.abs(angleDiff) < attackAngle) {
+                        const dmg = Math.round(game.atk * comboMult);
+                        enemy.hp -= dmg;
+                        flashEnemy(enemy.mesh);
+                        hitSomething = true;
+                        registerHit();
+
+                        const screenPos = toScreenPosition(enemy.mesh, camera);
+                        showDamageNumber(screenPos.x, screenPos.y, dmg);
+
+                        if (enemy.hp <= 0) {
+                            const deadType = enemy.type;
+                            const deadX = enemy.mesh.position.x;
+                            const deadZ = enemy.mesh.position.z;
+                            const wasSplit = enemy.isSplit;
+                            scene.remove(enemy.mesh);
+                            enemies.splice(i, 1);
+                            game.totalKills++;
+
+                            if (deadType === 'slime' && !wasSplit) {
+                                const splitHp = Math.round((20 + game.floor * 5) * 0.7 * 0.5);
+                                const splitAtk = Math.round((5 + game.floor * 2) * 0.6 * 0.5);
+                                spawnEnemy(deadX - 0.8, deadZ, 'slime', { hp: splitHp, atk: splitAtk, isSplit: true });
+                                spawnEnemy(deadX + 0.8, deadZ, 'slime', { hp: splitHp, atk: splitAtk, isSplit: true });
+                                showMessage("Slime split!");
+                            } else {
+                                showMessage("Enemy defeated!");
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check if hitting boss
+            if (boss && boss.active) {
+                const dx = boss.mesh.position.x - playerPos.x;
+                const dz = boss.mesh.position.z - playerPos.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < attackRange + 1) {
+                    const angle = Math.atan2(dx, dz);
+                    let angleDiff = angle - playerAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+                    if (Math.abs(angleDiff) < attackAngle) {
+                        let dmg = Math.round(game.atk * comboMult);
+
+                        // Backstab check
+                        const backstab = isBackstab(boss.mesh);
+                        if (backstab) {
+                            dmg *= 2;
+                            showBackstabMessage();
+                        }
+
+                        boss.hp -= dmg;
+                        flashEnemy(boss.mesh);
+                        updateBossHP();
+                        hitSomething = true;
+                        registerHit();
+
+                        const screenPos = toScreenPosition(boss.mesh, camera);
+                        showDamageNumber(screenPos.x, screenPos.y, dmg);
+
+                        if (boss.hp <= 0) {
+                            defeatBoss();
+                        }
+                    }
+                }
+            }
+
+            // Decay combo after timeout
+            if (Date.now() - game.lastHitTime > 2000) {
+                game.comboCount = 0;
+                updateComboUI();
+            }
+
+            updateUI();
+        }
+
+        function toScreenPosition(obj, cam) {
+            const vector = new THREE.Vector3();
+            vector.setFromMatrixPosition(obj.matrixWorld);
+            vector.project(cam);
+
+            return {
+                x: (vector.x * 0.5 + 0.5) * window.innerWidth,
+                y: (-vector.y * 0.5 + 0.5) * window.innerHeight
+            };
+        }
+
+        function flashEnemy(mesh) {
+            const originalColor = mesh.material.color.getHex();
+            mesh.material.color.setHex(0xffffff);
+            setTimeout(() => mesh.material.color.setHex(originalColor), 100);
+        }
+
+        function defeatBoss() {
+            // Save boss position before nullifying
+            const bossX = boss.mesh.position.x;
+            const bossZ = boss.mesh.position.z;
+
+            scene.remove(boss.mesh);
+            game.bossActive = false;
+            document.getElementById('boss-hp').style.display = 'none';
+
+            showMessage(`Floor ${game.floor} cleared! Find the stairs!`);
+            game.totalKills++;
+
+            // Spawn stairs at saved position
+            const stairsGeom = new THREE.BoxGeometry(2, 0.3, 2);
+            const stairsMat = new THREE.MeshStandardMaterial({
+                color: 0x00ff00,
+                emissive: 0x004400
+            });
+            stairs = new THREE.Mesh(stairsGeom, stairsMat);
+            stairs.position.set(bossX, 0.15, bossZ);
+            scene.add(stairs);
+
+            // Stairs light
+            stairsLight = new THREE.PointLight(0x00ff00, 1, 10);
+            stairsLight.position.set(bossX, 1, bossZ);
+            scene.add(stairsLight);
+
+            boss = null;
+
+            // Bonus stats
+            game.maxHp += 10;
+            game.hp = game.maxHp;
+            game.maxMp += 5;
+            game.mp = game.maxMp;
+            game.atk += 2;
+        }
+
+        function interact() {
+            if (!game.isPlaying) return;
+
+            // Check for shrine FIRST (before boss, since they may be nearby)
+            if (shrine && !game.shrineUsed) {
+                const dx = shrine.position.x - playerPos.x;
+                const dz = shrine.position.z - playerPos.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < 2) {
+                    game.shrineUsed = true;
+                    game.shrineBuff = true;
+                    game.atk += 5;
+                    game.maxHp += 20;
+                    game.hp = Math.min(game.hp + 20, game.maxHp);
+                    showMessage("Shrine blessing! ATK+5, MaxHP+20");
+                    // Visual feedback: remove shrine glow
+                    if (shrineLight) {
+                        scene.remove(shrineLight);
+                        shrineLight = null;
+                    }
+                    shrine.material.emissive.setHex(0x111100);
+                    shrine.material.emissiveIntensity = 0.1;
+                    updateUI();
+                    return;
+                }
+            }
+
+            // Check for boss interaction
+            if (boss && !boss.active) {
+                const dx = boss.mesh.position.x - playerPos.x;
+                const dz = boss.mesh.position.z - playerPos.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < 5) {
+                    if (game.hasBossKey) {
+                        boss.active = true;
+                        game.bossActive = true;
+                        document.getElementById('boss-hp').style.display = 'block';
+                        updateBossHP();
+                        showMessage("BOSS BATTLE START!");
+                    } else {
+                        showMessage("You need the Boss Key to challenge the Guardian!");
+                    }
+                    return;
+                }
+            }
+
+            // Check for stairs
+            if (stairs) {
+                const dx = stairs.position.x - playerPos.x;
+                const dz = stairs.position.z - playerPos.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < 2) {
+                    game.floor++;
+                    game.hasBossKey = false;
+                    showMessage(`Ascending to Floor ${game.floor}...`);
+                    setTimeout(() => generateDungeon(), 1000);
+                }
+            }
+        }
+
+        function toggleInventory() {
+            inventoryOpen = !inventoryOpen;
+            const panel = document.getElementById('inventory-panel');
+            if (inventoryOpen) {
+                renderInventoryPanel();
+                panel.classList.add('open');
+                document.exitPointerLock();
+            } else {
+                panel.classList.remove('open');
+                if (!window._autoTestMode) {
+                    renderer.domElement.requestPointerLock();
+                }
+            }
+        }
+
+        function renderInventoryPanel() {
+            const container = document.getElementById('inv-items');
+            container.innerHTML = '';
+
+            if (game.items.length === 0) {
+                container.innerHTML = '<div class="inv-empty">No items</div>';
+                return;
+            }
+
+            const itemInfo = {
+                potion:   { icon: '🧪', name: 'Potion',    desc: 'Restores 50 HP' },
+                mpPotion: { icon: '💧', name: 'MP Potion', desc: 'Restores 30 MP' },
+                shield:   { icon: '🛡️', name: 'Shield',    desc: 'Permanently increases ATK +3' },
+                charm:    { icon: '✨', name: 'Charm',     desc: 'Reduces damage by 50% for 15s' }
+            };
+
+            game.items.forEach((item, i) => {
+                const info = itemInfo[item] || { icon: '?', name: item, desc: '' };
+                const el = document.createElement('div');
+                el.className = 'inv-item';
+                el.innerHTML = `
+                    <div class="inv-item-icon">${info.icon}</div>
+                    <div class="inv-item-info">
+                        <div class="inv-item-name">${info.name}</div>
+                        <div class="inv-item-desc">${info.desc}</div>
+                    </div>
+                `;
+                el.addEventListener('click', () => {
+                    useItem(i);
+                    if (game.items.length > 0) {
+                        renderInventoryPanel();
+                    } else {
+                        toggleInventory();
+                    }
+                });
+                container.appendChild(el);
+            });
+        }
+
+        function useItem(index) {
+            if (!game.isPlaying) return;
+            if (index >= game.items.length) return;
+
+            const item = game.items[index];
+            switch (item) {
+                case 'potion':
+                    const healAmount = 50;
+                    game.hp = Math.min(game.hp + healAmount, game.maxHp);
+                    showMessage("HP restored!");
+                    showDamageNumber(window.innerWidth / 2, window.innerHeight / 2, healAmount, true);
+                    break;
+                case 'mpPotion':
+                    const mpAmount = 30;
+                    game.mp = Math.min(game.mp + mpAmount, game.maxMp);
+                    showMessage("MP restored!");
+                    showDamageNumber(window.innerWidth / 2, window.innerHeight / 2, mpAmount, true);
+                    break;
+                case 'shield':
+                    game.atk += 3;
+                    showMessage("Attack power increased!");
+                    break;
+                case 'charm':
+                    game.shieldBuff = true;
+                    game.shieldBuffTime = Date.now() + 15000;
+                    showMessage("Defense up for 15 seconds!");
+                    break;
+            }
+            game.items.splice(index, 1);
+            updateUI();
+        }
+
+        function onMouseMove(e) {
+            if (!isPointerLocked || !game.isPlaying) return;
+
+            playerAngle += e.movementX * 0.002;
+            playerPitch += e.movementY * 0.002;
+            playerPitch = Math.max(-Math.PI/3, Math.min(Math.PI/3, playerPitch));
+        }
+
+        function updateMapMemory() {
+            if (!mapMemory || mapMemory.length === 0) return;
+            const pgx = Math.floor(playerPos.x / cellSize);
+            const pgz = Math.floor(playerPos.z / cellSize);
+
+            for (let z = 0; z < mapSize; z++) {
+                for (let x = 0; x < mapSize; x++) {
+                    const dx = x - pgx;
+                    const dz = z - pgz;
+                    const dist = Math.sqrt(dx * dx + dz * dz);
+
+                    if (dist <= MEMORY_VIEW_RADIUS) {
+                        // Within view: boost memory (closer = stronger, with line-of-sight)
+                        const strength = 1.0 - (dist / (MEMORY_VIEW_RADIUS + 1)) * 0.3;
+                        mapMemory[z][x] = Math.min(1.0, Math.max(mapMemory[z][x], strength));
+                    } else {
+                        // Outside view: decay
+                        mapMemory[z][x] = Math.max(0, mapMemory[z][x] - MEMORY_DECAY_RATE);
+                    }
+                }
+            }
+        }
+
+        function updatePlayer() {
+            if (!game.isPlaying || inventoryOpen) return;
+
+            const speed = 0.1;
+            let dx = 0, dz = 0;
+
+            if (keys['w']) { dx += Math.sin(playerAngle); dz += Math.cos(playerAngle); }
+            if (keys['s']) { dx -= Math.sin(playerAngle); dz -= Math.cos(playerAngle); }
+            if (keys['a']) { dx += Math.cos(playerAngle); dz -= Math.sin(playerAngle); }
+            if (keys['d']) { dx -= Math.cos(playerAngle); dz += Math.sin(playerAngle); }
+
+            if (dx !== 0 || dz !== 0) {
+                const len = Math.sqrt(dx * dx + dz * dz);
+                dx = dx / len * speed;
+                dz = dz / len * speed;
+
+                const newX = playerPos.x + dx;
+                const newZ = playerPos.z + dz;
+
+                // Collision detection with margin
+                const margin = 0.4;
+
+                let canMoveX = !isWall(newX + margin, playerPos.z) && !isWall(newX - margin, playerPos.z);
+                let canMoveZ = !isWall(playerPos.x, newZ + margin) && !isWall(playerPos.x, newZ - margin);
+
+                // Entity collision (enemies + boss)
+                if (canMoveX || canMoveZ) {
+                    const testX = canMoveX ? newX : playerPos.x;
+                    const testZ = canMoveZ ? newZ : playerPos.z;
+                    for (const enemy of enemies) {
+                        const def = ENEMY_TYPES[enemy.type] || ENEMY_TYPES.skeleton;
+                        // Wraiths are phased — no collision
+                        if (enemy.type === 'wraith') continue;
+                        const eRadius = Math.max(def.size.w, def.size.d) * 0.5 + margin;
+                        const edx = testX - enemy.mesh.position.x;
+                        const edz = testZ - enemy.mesh.position.z;
+                        const eDist = Math.sqrt(edx * edx + edz * edz);
+                        if (eDist < eRadius) {
+                            // Push player back — block the axis that caused overlap
+                            const edxOld = playerPos.x - enemy.mesh.position.x;
+                            const edzOld = playerPos.z - enemy.mesh.position.z;
+                            if (canMoveX && Math.abs(newX - enemy.mesh.position.x) < Math.abs(edxOld)) canMoveX = false;
+                            if (canMoveZ && Math.abs(newZ - enemy.mesh.position.z) < Math.abs(edzOld)) canMoveZ = false;
+                        }
+                    }
+                    if (boss && boss.mesh) {
+                        const bRadius = 1.0 + margin;
+                        const bdx = testX - boss.mesh.position.x;
+                        const bdz = testZ - boss.mesh.position.z;
+                        const bDist = Math.sqrt(bdx * bdx + bdz * bdz);
+                        if (bDist < bRadius) {
+                            const bdxOld = playerPos.x - boss.mesh.position.x;
+                            const bdzOld = playerPos.z - boss.mesh.position.z;
+                            if (canMoveX && Math.abs(newX - boss.mesh.position.x) < Math.abs(bdxOld)) canMoveX = false;
+                            if (canMoveZ && Math.abs(newZ - boss.mesh.position.z) < Math.abs(bdzOld)) canMoveZ = false;
+                        }
+                    }
+                }
+
+                if (canMoveX) playerPos.x = newX;
+                if (canMoveZ) playerPos.z = newZ;
+            }
+
+            camera.position.x = playerPos.x;
+            camera.position.z = playerPos.z;
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = playerAngle + Math.PI;
+            camera.rotation.x = playerPitch;
+
+            // MP regeneration
+            if (game.mp < game.maxMp) {
+                game.mp = Math.min(game.mp + 0.05, game.maxMp);
+            }
+
+            // Fog of war: reveal cells near player, decay distant memories
+            updateMapMemory();
+
+            // Check item pickup
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                const itemDx = item.x - playerPos.x;
+                const itemDz = item.z - playerPos.z;
+                const dist = Math.sqrt(itemDx * itemDx + itemDz * itemDz);
+
+                if (dist < 1) {
+                    scene.remove(item.mesh);
+                    scene.remove(item.light);
+
+                    if (item.type === 'key') {
+                        game.hasBossKey = true;
+                        showMessage("Got the Boss Key!");
+                    } else {
+                        game.items.push(item.type);
+                        showMessage(`Got ${item.type}!`);
+                    }
+
+                    items.splice(i, 1);
+                    updateUI();
+                }
+            }
+        }
+
+        function isWall(x, z) {
+            const mapX = Math.floor(x / cellSize);
+            const mapZ = Math.floor(z / cellSize);
+            if (mapX < 0 || mapX >= mapSize || mapZ < 0 || mapZ >= mapSize) return true;
+            return map[mapZ][mapX] === 1;
+        }
+
+        function updateEnemies() {
+            if (!game.isPlaying) return;
+
+            const now = Date.now();
+
+            enemies.forEach(enemy => {
+                const dx = playerPos.x - enemy.mesh.position.x;
+                const dz = playerPos.z - enemy.mesh.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                const def = ENEMY_TYPES[enemy.type] || ENEMY_TYPES.skeleton;
+
+                // Face player
+                enemy.mesh.rotation.y = Math.atan2(dx, dz);
+
+                // Move towards player if in range
+                if (dist < 10 && dist > 1.5) {
+                    // Slime: occasional jump (short teleport)
+                    if (enemy.type === 'slime' && Math.random() < 0.01 && now - enemy.lastJump > 3000 && dist < 6) {
+                        enemy.lastJump = now;
+                        const jumpDist = Math.min(dist - 1.5, 2);
+                        const jumpX = enemy.mesh.position.x + (dx / dist) * jumpDist;
+                        const jumpZ = enemy.mesh.position.z + (dz / dist) * jumpDist;
+                        if (!isWall(jumpX, jumpZ)) {
+                            enemy.mesh.position.x = jumpX;
+                            enemy.mesh.position.z = jumpZ;
+                        }
+                    } else {
+                        const moveX = (dx / dist) * enemy.speed;
+                        const moveZ = (dz / dist) * enemy.speed;
+
+                        const newX = enemy.mesh.position.x + moveX;
+                        const newZ = enemy.mesh.position.z + moveZ;
+
+                        // Wraith: phase through walls
+                        if (enemy.type === 'wraith') {
+                            enemy.mesh.position.x = newX;
+                            enemy.mesh.position.z = newZ;
+                        } else {
+                            if (!isWall(newX, enemy.mesh.position.z)) {
+                                enemy.mesh.position.x = newX;
+                            }
+                            if (!isWall(enemy.mesh.position.x, newZ)) {
+                                enemy.mesh.position.z = newZ;
+                            }
+                        }
+                    }
+                }
+
+                // Attack range varies by type
+                const atkRange = enemy.type === 'golem' ? 2.5 : 1.5;
+                if (dist < atkRange && now - enemy.lastAttack > 1000) {
+                    enemy.lastAttack = now;
+                    takeDamage(enemy.atk);
+                }
+
+                // Bobbing animation
+                const baseY = def.size.h / 2;
+                if (enemy.type === 'slime') {
+                    enemy.mesh.position.y = baseY + Math.abs(Math.sin(now * 0.006)) * 0.2;
+                } else {
+                    enemy.mesh.position.y = baseY + Math.sin(now * 0.005) * 0.1;
+                }
+            });
+
+            // Boss AI
+            if (boss && boss.active) {
+                const dx = playerPos.x - boss.mesh.position.x;
+                const dz = playerPos.z - boss.mesh.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                const bossDef = BOSS_TYPES[boss.type] || BOSS_TYPES.guardian;
+
+                // Limit turn speed (max 0.05 rad/frame for backstab opportunities)
+                const targetRot = Math.atan2(dx, dz);
+                let rotDiff = targetRot - boss.mesh.rotation.y;
+                while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+                while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+                const maxTurnSpeed = 0.05;
+                boss.mesh.rotation.y += Math.max(-maxTurnSpeed, Math.min(maxTurnSpeed, rotDiff));
+
+                // Berserker enrage check
+                if (bossDef.enrage && !boss.enraged && boss.hp <= boss.maxHp * 0.3) {
+                    boss.enraged = true;
+                    boss.atk = boss.baseAtk * 2;
+                    boss.speedMult = (bossDef.speedMult || 1.0) * 1.5;
+                    showMessage("BOSS ENRAGED!");
+                }
+
+                // Sorcerer teleport check
+                if (bossDef.teleport && boss.hp <= boss.maxHp * 0.5 && Math.random() < 0.003) {
+                    // Teleport to a random open position
+                    const openCells = [];
+                    for (let tz = 1; tz < mapSize - 1; tz++) {
+                        for (let tx = 1; tx < mapSize - 1; tx++) {
+                            if (map[tz][tx] === 0) openCells.push({ x: tx, z: tz });
+                        }
+                    }
+                    if (openCells.length > 0) {
+                        const cell = openCells[Math.floor(Math.random() * openCells.length)];
+                        boss.mesh.position.x = cell.x * cellSize + cellSize / 2;
+                        boss.mesh.position.z = cell.z * cellSize + cellSize / 2;
+                        showMessage("Boss teleported!");
+                    }
+                }
+
+                // Stunned state (berserker hits wall after charge)
+                const bossIsStunned = boss.stunned && now <= boss.stunEnd;
+                if (boss.stunned && now > boss.stunEnd) {
+                    boss.stunned = false;
+                }
+
+                if (!bossIsStunned) {
+                // Telegraph system
+                if (boss.telegraphing) {
+                    const elapsed = now - boss.telegraphStart;
+                    const progress = Math.min(1, elapsed / boss.telegraphTime);
+
+                    // Visual: flash red
+                    if (Math.floor(now / 150) % 2 === 0) {
+                        boss.mesh.material.emissive.setHex(0xff0000);
+                    } else {
+                        boss.mesh.material.emissive.setHex(boss.originalEmissive);
+                    }
+
+                    // Update telegraph warning bar
+                    updateTelegraphWarning(progress);
+
+                    // Telegraph complete → execute special attack
+                    if (progress >= 1) {
+                        boss.telegraphing = false;
+                        boss.mesh.material.emissive.setHex(boss.originalEmissive);
+                        hideTelegraphWarning();
+
+                        if (dist < 6) {
+                            // Player failed to dodge
+                            const specialDmg = boss.atk * 3;
+
+                            if (bossDef.slamAttack) {
+                                takeDamage(specialDmg);
+                                showMessage("SLAM ATTACK!");
+                            } else if (bossDef.projectileAttack) {
+                                // Fire projectile toward player
+                                spawnBossProjectile(boss.mesh.position.x, boss.mesh.position.z, dx, dz, dist);
+                            } else if (bossDef.enrage) {
+                                // Berserker charge
+                                const chargeDir = { x: dx / dist, z: dz / dist };
+                                let chargeX = boss.mesh.position.x;
+                                let chargeZ = boss.mesh.position.z;
+                                for (let step = 0; step < 20; step++) {
+                                    const nx = chargeX + chargeDir.x * 0.5;
+                                    const nz = chargeZ + chargeDir.z * 0.5;
+                                    if (isWall(nx, nz)) {
+                                        boss.stunned = true;
+                                        boss.stunEnd = now + 2000;
+                                        showMessage("Boss stunned!");
+                                        break;
+                                    }
+                                    chargeX = nx;
+                                    chargeZ = nz;
+                                    // Check if hit player during charge
+                                    const pDist = Math.sqrt(Math.pow(chargeX - playerPos.x, 2) + Math.pow(chargeZ - playerPos.z, 2));
+                                    if (pDist < 2) {
+                                        takeDamage(specialDmg);
+                                        showMessage("CHARGE ATTACK!");
+                                        break;
+                                    }
+                                }
+                                boss.mesh.position.x = chargeX;
+                                boss.mesh.position.z = chargeZ;
+                            }
+                        } else {
+                            // Player dodged successfully
+                            showDodgeMessage();
+                        }
+                    }
+                } else {
+                    // Normal behavior
+                    const bossSpeed = (0.03 + (1 - boss.hp / boss.maxHp) * 0.02) * (boss.speedMult || 1.0);
+                    if (dist > 3) {
+                        const moveX = (dx / dist) * bossSpeed;
+                        const moveZ = (dz / dist) * bossSpeed;
+                        boss.mesh.position.x += moveX;
+                        boss.mesh.position.z += moveZ;
+                    }
+
+                    // Normal boss attack
+                    if (dist < 3.5 && now - boss.lastAttack > 1500) {
+                        boss.lastAttack = now;
+                        boss.attackCount++;
+                        takeDamage(boss.atk);
+
+                        // Every 3 attacks, start telegraph for special
+                        if (boss.attackCount % 3 === 0) {
+                            boss.telegraphing = true;
+                            boss.telegraphStart = now;
+                            showTelegraphWarning();
+                        }
+                    }
+                }
+
+                } // end if (!bossIsStunned)
+
+                // Boss animation
+                boss.mesh.position.y = 1.5 + Math.sin(now * 0.003) * 0.2;
+                boss.mesh.scale.setScalar(1 + Math.sin(now * 0.01) * 0.05);
+            }
+
+            // Update boss projectiles
+            updateBossProjectiles();
+        }
+
+        function spawnBossProjectile(fromX, fromZ, dx, dz, dist) {
+            const geom = new THREE.SphereGeometry(0.3, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00ccff });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(fromX, 1.5, fromZ);
+            scene.add(mesh);
+            const speed = 0.15;
+            bossProjectiles.push({
+                mesh,
+                vx: (dx / dist) * speed,
+                vz: (dz / dist) * speed,
+                spawnTime: Date.now()
+            });
+        }
+
+        function updateBossProjectiles() {
+            for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+                const p = bossProjectiles[i];
+                p.mesh.position.x += p.vx;
+                p.mesh.position.z += p.vz;
+
+                // Check wall collision
+                if (isWall(p.mesh.position.x, p.mesh.position.z) || Date.now() - p.spawnTime > 5000) {
+                    scene.remove(p.mesh);
+                    bossProjectiles.splice(i, 1);
+                    continue;
+                }
+
+                // Check player collision
+                const pdx = p.mesh.position.x - playerPos.x;
+                const pdz = p.mesh.position.z - playerPos.z;
+                if (Math.sqrt(pdx * pdx + pdz * pdz) < 1) {
+                    takeDamage(boss ? boss.atk * 2 : 10);
+                    scene.remove(p.mesh);
+                    bossProjectiles.splice(i, 1);
+                    showMessage("Hit by projectile!");
+                }
+            }
+        }
+
+        function showTelegraphWarning() {
+            let bar = document.getElementById('telegraph-bar');
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.id = 'telegraph-bar';
+                bar.style.cssText = 'position:absolute;top:140px;left:50%;transform:translateX(-50%);' +
+                    'width:400px;text-align:center;color:#ff0;background:rgba(0,0,0,0.7);padding:8px;' +
+                    'border-radius:10px;border:2px solid #ff0;font-weight:bold;font-size:16px;';
+                bar.innerHTML = '<span>⚠ CHARGING... ⚠</span><div id="telegraph-fill-bg" style="width:100%;height:8px;background:#333;margin-top:5px;border-radius:4px;">' +
+                    '<div id="telegraph-fill" style="width:0%;height:100%;background:linear-gradient(to right,#ff0,#f00);border-radius:4px;transition:width 0.1s;"></div></div>';
+                document.getElementById('ui').appendChild(bar);
+            }
+            bar.style.display = 'block';
+        }
+
+        function updateTelegraphWarning(progress) {
+            const fill = document.getElementById('telegraph-fill');
+            if (fill) fill.style.width = (progress * 100) + '%';
+        }
+
+        function hideTelegraphWarning() {
+            const bar = document.getElementById('telegraph-bar');
+            if (bar) bar.style.display = 'none';
+        }
+
+        function showDodgeMessage() {
+            const el = document.createElement('div');
+            el.style.cssText = 'position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);' +
+                'color:#00ff00;font-size:36px;font-weight:bold;text-shadow:0 0 10px #00ff00;' +
+                'pointer-events:none;z-index:100;';
+            el.textContent = 'DODGE!';
+            document.getElementById('ui').appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        function takeDamage(amount) {
+            // Shield buff: 50% damage reduction
+            if (game.shieldBuff && Date.now() < game.shieldBuffTime) {
+                amount = Math.round(amount * 0.5);
+            } else if (game.shieldBuff && Date.now() >= game.shieldBuffTime) {
+                game.shieldBuff = false;
+            }
+            game.hp -= amount;
+
+            // Screen flash
+            document.body.style.background = '#ff0000';
+            setTimeout(() => document.body.style.background = '#000', 100);
+
+            // Show damage number
+            showDamageNumber(window.innerWidth / 2, window.innerHeight / 2 + 50, amount);
+
+            if (game.hp <= 0) {
+                game.hp = 0;
+                gameOver();
+            }
+            updateUI();
+        }
+
+        function gameOver() {
+            game.isPlaying = false;
+            inventoryOpen = false;
+            document.getElementById('inventory-panel').classList.remove('open');
+            document.exitPointerLock();
+            document.getElementById('final-floor').textContent = game.floor;
+            document.getElementById('final-kills').textContent = game.totalKills;
+            document.getElementById('game-over').style.display = 'flex';
+            document.getElementById('boss-hp').style.display = 'none';
+        }
+
+        function showMessage(text) {
+            const msgEl = document.getElementById('message');
+            msgEl.textContent = text;
+            msgEl.classList.add('show');
+            setTimeout(() => msgEl.classList.remove('show'), 2000);
+        }
+
+        function updateUI() {
+            document.getElementById('floor-num').textContent = game.floor;
+            document.getElementById('hp-val').textContent = Math.floor(game.hp);
+            document.getElementById('hp-max').textContent = game.maxHp;
+            document.getElementById('mp-val').textContent = Math.floor(game.mp);
+            document.getElementById('mp-max').textContent = game.maxMp;
+            document.getElementById('atk-val').textContent = game.atk;
+            document.getElementById('enemy-count').textContent = enemies.length;
+
+            // Buff indicators
+            let buffEl = document.getElementById('buff-indicators');
+            if (!buffEl) {
+                buffEl = document.createElement('div');
+                buffEl.id = 'buff-indicators';
+                buffEl.style.cssText = 'margin-top:5px;font-size:11px;';
+                document.getElementById('stats').appendChild(buffEl);
+            }
+            const buffs = [];
+            if (game.shrineBuff) buffs.push('<span style="color:#ffd700">Shrine ATK+5 HP+20</span>');
+            if (game.shieldBuff && Date.now() < game.shieldBuffTime) {
+                const remaining = Math.ceil((game.shieldBuffTime - Date.now()) / 1000);
+                buffs.push(`<span style="color:#44ff44">DEF+50% (${remaining}s)</span>`);
+            }
+            buffEl.innerHTML = buffs.join(' ');
+            document.getElementById('hp-fill').style.width = Math.max(0, (game.hp / game.maxHp * 100)) + '%';
+            document.getElementById('mp-fill').style.width = (game.mp / game.maxMp * 100) + '%';
+
+            // Items
+            const itemList = document.getElementById('item-list');
+            itemList.innerHTML = '';
+
+            if (game.hasBossKey) {
+                const keyEl = document.createElement('div');
+                keyEl.className = 'item key';
+                keyEl.textContent = '🔑';
+                keyEl.title = 'Boss Key';
+                itemList.appendChild(keyEl);
+            }
+
+            game.items.forEach((item, i) => {
+                const el = document.createElement('div');
+                el.className = 'item ' + item;
+                const icons = { potion: '🧪', mpPotion: '💧', shield: '🛡️', charm: '✨' };
+                el.textContent = icons[item] || '?';
+                el.title = `${item} (TAB to use)`;
+                itemList.appendChild(el);
+            });
+        }
+
+        function updateBossHP() {
+            if (boss) {
+                const percentage = Math.max(0, (boss.hp / boss.maxHp * 100));
+                document.getElementById('boss-hp-fill').style.width = percentage + '%';
+            }
+        }
+
+        function updateMinimap() {
+            const canvas = document.getElementById('minimap-canvas');
+            const ctx = canvas.getContext('2d');
+            const scale = canvas.width / mapSize;
+            const pgx = Math.floor(playerPos.x / cellSize);
+            const pgz = Math.floor(playerPos.z / cellSize);
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw map (fog of war based on memory)
+            for (let z = 0; z < mapSize; z++) {
+                for (let x = 0; x < mapSize; x++) {
+                    const mem = (mapMemory[z] && mapMemory[z][x]) || 0;
+                    if (mem < MEMORY_MIN_VISIBLE) continue; // fully unknown
+
+                    const alpha = mem;
+                    if (map[z] && map[z][x] === 1) {
+                        ctx.fillStyle = `rgba(68,68,68,${alpha})`;
+                    } else {
+                        ctx.fillStyle = `rgba(34,34,34,${alpha})`;
+                    }
+                    ctx.fillRect(x * scale, z * scale, scale, scale);
+                }
+            }
+
+            // Helper: check if a world position is currently remembered
+            function isRemembered(wx, wz) {
+                const gx = Math.floor(wx / cellSize);
+                const gz = Math.floor(wz / cellSize);
+                return mapMemory[gz] && mapMemory[gz][gx] > MEMORY_MIN_VISIBLE;
+            }
+            // Helper: check if a world position is in current view range
+            function isInView(wx, wz) {
+                const gx = Math.floor(wx / cellSize);
+                const gz = Math.floor(wz / cellSize);
+                const ddx = gx - pgx, ddz = gz - pgz;
+                return Math.sqrt(ddx * ddx + ddz * ddz) <= MEMORY_VIEW_RADIUS;
+            }
+            function memAlpha(wx, wz) {
+                const gx = Math.floor(wx / cellSize);
+                const gz = Math.floor(wz / cellSize);
+                return (mapMemory[gz] && mapMemory[gz][gx]) || 0;
+            }
+
+            // Draw items (key always on minimap if remembered, others only in view)
+            items.forEach(item => {
+                if (item.type === 'key' && isRemembered(item.x, item.z)) {
+                    const a = memAlpha(item.x, item.z);
+                    ctx.fillStyle = `rgba(255,215,0,${a})`;
+                    ctx.fillRect(item.x / cellSize * scale - 2, item.z / cellSize * scale - 2, 4, 4);
+                }
+            });
+
+            // Draw enemies (only visible in current view radius)
+            const enemyColorsRGB = {
+                skeleton: '204,204,170', slime: '68,204,68',
+                wraith: '153,102,204', golem: '136,136,119'
+            };
+            enemies.forEach(e => {
+                if (!isInView(e.mesh.position.x, e.mesh.position.z)) return;
+                const rgb = enemyColorsRGB[e.type] || '255,68,68';
+                ctx.fillStyle = `rgba(${rgb},1)`;
+                ctx.fillRect(e.mesh.position.x / cellSize * scale - 2, e.mesh.position.z / cellSize * scale - 2, 4, 4);
+            });
+
+            // Draw shrine (show if remembered)
+            if (shrine && !game.shrineUsed && isRemembered(shrine.position.x, shrine.position.z)) {
+                const a = memAlpha(shrine.position.x, shrine.position.z);
+                ctx.fillStyle = `rgba(255,215,0,${a})`;
+                const sx = shrine.position.x / cellSize * scale;
+                const sz = shrine.position.z / cellSize * scale;
+                ctx.beginPath();
+                ctx.moveTo(sx, sz - 4);
+                ctx.lineTo(sx + 4, sz);
+                ctx.lineTo(sx, sz + 4);
+                ctx.lineTo(sx - 4, sz);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Draw boss (show if remembered or in view)
+            if (boss && isRemembered(boss.mesh.position.x, boss.mesh.position.z)) {
+                const a = isInView(boss.mesh.position.x, boss.mesh.position.z) ? 1.0
+                        : memAlpha(boss.mesh.position.x, boss.mesh.position.z);
+                if (boss.telegraphing && Math.floor(Date.now() / 200) % 2 === 0) {
+                    ctx.fillStyle = `rgba(255,0,0,${a})`;
+                } else {
+                    ctx.fillStyle = `rgba(255,0,255,${a})`;
+                }
+                ctx.fillRect(boss.mesh.position.x / cellSize * scale - 3, boss.mesh.position.z / cellSize * scale - 3, 6, 6);
+            }
+
+            // Draw stairs (show if remembered)
+            if (stairs && isRemembered(stairs.position.x, stairs.position.z)) {
+                const a = memAlpha(stairs.position.x, stairs.position.z);
+                ctx.fillStyle = `rgba(0,255,0,${a})`;
+                ctx.fillRect(stairs.position.x / cellSize * scale - 3, stairs.position.z / cellSize * scale - 3, 6, 6);
+            }
+
+            // Draw player (always visible)
+            ctx.fillStyle = '#00ffff';
+            const px = playerPos.x / cellSize * scale;
+            const pz = playerPos.z / cellSize * scale;
+            ctx.beginPath();
+            ctx.arc(px, pz, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw direction
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(px, pz);
+            ctx.lineTo(px + Math.sin(playerAngle) * 8, pz + Math.cos(playerAngle) * 8);
+            ctx.stroke();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (game.isPlaying) {
+                updatePlayer();
+                updateEnemies();
+                updateMinimap();
+            }
+
+            // Animate items
+            items.forEach((item, i) => {
+                item.mesh.rotation.y += 0.02;
+                item.mesh.position.y = 0.5 + Math.sin(Date.now() * 0.003 + i) * 0.1;
+            });
+
+            // Animate shrine
+            if (shrine && !game.shrineUsed) {
+                shrine.rotation.y += 0.01;
+                shrine.position.y = 0.6 + Math.sin(Date.now() * 0.002) * 0.15;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Game API for external control (auto-testing)
+        window.gameAPI = {
+            // Get complete game state
+            getState: () => ({
+                game: {
+                    floor: game.floor,
+                    hp: game.hp,
+                    maxHp: game.maxHp,
+                    mp: game.mp,
+                    maxMp: game.maxMp,
+                    atk: game.atk,
+                    items: [...game.items],
+                    hasBossKey: game.hasBossKey,
+                    totalKills: game.totalKills,
+                    isPlaying: game.isPlaying,
+                    bossActive: game.bossActive,
+                    comboCount: game.comboCount,
+                    shrineUsed: game.shrineUsed,
+                    shrineBuff: game.shrineBuff,
+                    shieldBuff: game.shieldBuff
+                },
+                playerPos: { x: playerPos.x, z: playerPos.z },
+                playerAngle: playerAngle,
+                enemies: enemies.map(e => ({
+                    x: e.mesh.position.x,
+                    z: e.mesh.position.z,
+                    hp: e.hp,
+                    maxHp: e.maxHp,
+                    type: e.type || 'skeleton'
+                })),
+                boss: boss ? {
+                    x: boss.mesh.position.x,
+                    z: boss.mesh.position.z,
+                    hp: boss.hp,
+                    maxHp: boss.maxHp,
+                    active: boss.active,
+                    type: boss.type || 'guardian',
+                    telegraphing: boss.telegraphing || false,
+                    telegraphProgress: boss.telegraphing
+                        ? Math.min(1, (Date.now() - boss.telegraphStart) / boss.telegraphTime)
+                        : 0,
+                    stunned: boss.stunned || false,
+                    enraged: boss.enraged || false,
+                    rotationY: boss.mesh.rotation.y
+                } : null,
+                items: items.map(i => ({ x: i.x, z: i.z, type: i.type })),
+                stairs: stairs ? { x: stairs.position.x, z: stairs.position.z } : null,
+                shrine: shrine && !game.shrineUsed
+                    ? { x: shrine.position.x, z: shrine.position.z }
+                    : null,
+                map: map,
+                mapSize: mapSize,
+                cellSize: cellSize
+            }),
+
+            // Press a movement key
+            pressKey: (key) => {
+                keys[key] = true;
+                setTimeout(() => keys[key] = false, 200);
+            },
+
+            // Execute attack
+            doAttack: () => {
+                if (typeof attack === 'function') attack();
+            },
+
+            // Execute interact
+            doInteract: () => {
+                if (typeof interact === 'function') interact();
+            },
+
+            // Set player angle directly
+            setAngle: (angle) => {
+                playerAngle = angle;
+            },
+
+            // Start/restart the game
+            start: () => {
+                if (typeof startGame === 'function') startGame();
+            },
+
+            // Use item by slot (1-3)
+            useItem: (slot) => {
+                if (typeof useItem === 'function') useItem(slot - 1);
+            }
+        };
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
