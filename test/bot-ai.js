@@ -2,10 +2,11 @@
  * Bot AI - Rule-based intelligent agent for dungeon exploration
  *
  * Phases:
- *   get_key   - Locate and collect the boss key
+ *   get_key    - Locate and collect the boss key
  *   fight_boss - Navigate to boss, activate, and defeat
- *   ascend    - Find stairs and move to next floor
- *   explore   - Wander to discover map when target is unknown
+ *   ascend     - Find stairs and move to next floor
+ *   explore    - DFS exploration to discover map when target is unknown
+ *   pickup_item - Collect a visible item
  */
 
 const Pathfinder = require('./pathfinder');
@@ -18,34 +19,35 @@ class BotAI {
         this.pathTargetX = null;
         this.pathTargetZ = null;
         this.visitedCells = new Set();
+        this.blacklistedTargets = new Set();
         this.lastPosition = null;
         this.stuckCounter = 0;
+        this.noneCounter = 0;
         this.phase = 'explore';
         this.actionCooldown = 0;
-        this.explorationTargets = [];
-        this.explorationIndex = 0;
+        this.committedTarget = null;   // DFS: committed exploration target
         this.lastFloor = 0;
-        this.debugInfo = {};        // exposed for HUD overlay
-        this.shrineAttempts = 0;    // prevent shrine interact infinite loop
+        this.debugInfo = {};
+        this.shrineAttempts = 0;
         this.maxShrineAttempts = 20;
+        this.logLines = [];
     }
 
-    /**
-     * Main entry point: feed new game state, get back an action.
-     */
+    log(msg) {
+        this.logLines.push(msg);
+        if (this.logLines.length > 50) this.logLines.shift();
+    }
+
     update(state) {
         this.state = state;
 
-        // Floor changed → reset navigation state
         if (state.game.floor !== this.lastFloor) {
             this.lastFloor = state.game.floor;
             this.resetNavigation();
         }
 
-        // Always use the current map (dungeon regenerates on death/floor change)
         this.pathfinder = new Pathfinder(state.map, state.cellSize);
 
-        // Mark current cell visited
         const g = this.pathfinder.worldToGrid(state.playerPos.x, state.playerPos.z);
         this.visitedCells.add(`${g.x},${g.z}`);
 
@@ -53,7 +55,23 @@ class BotAI {
         if (this.actionCooldown > 0) this.actionCooldown--;
 
         const action = this.decideAction();
+
+        // Emergency recovery: too many consecutive 'none' actions
+        if (!action || action.action === 'none') {
+            this.noneCounter++;
+            if (this.noneCounter > 40) {
+                this.log(`EMERGENCY: ${this.noneCounter} nones, force wander`);
+                this.noneCounter = 0;
+                this.clearPath();
+                this.committedTarget = null;
+                return this.wander();
+            }
+        } else {
+            this.noneCounter = 0;
+        }
+
         this.debugInfo.action = action;
+        this.debugInfo.blacklisted = this.blacklistedTargets.size;
         return action;
     }
 
@@ -62,14 +80,19 @@ class BotAI {
     /* ------------------------------------------------------------------ */
 
     resetNavigation() {
+        this.clearPath();
+        this.visitedCells.clear();
+        this.blacklistedTargets.clear();
+        this.committedTarget = null;
+        this.stuckCounter = 0;
+        this.noneCounter = 0;
+        this.shrineAttempts = 0;
+    }
+
+    clearPath() {
         this.currentPath = null;
         this.pathTargetX = null;
         this.pathTargetZ = null;
-        this.visitedCells.clear();
-        this.explorationTargets = [];
-        this.explorationIndex = 0;
-        this.stuckCounter = 0;
-        this.shrineAttempts = 0;
     }
 
     detectStuck(state) {
@@ -82,12 +105,14 @@ class BotAI {
         }
         this.lastPosition = { x: state.playerPos.x, z: state.playerPos.z };
 
-        // Stuck > 30 ticks (~3 s) → throw away current path & skip exploration target
-        if (this.stuckCounter > 30) {
-            this.currentPath = null;
-            this.pathTargetX = null;
-            this.pathTargetZ = null;
-            this.explorationIndex++;
+        if (this.stuckCounter > 20) {
+            if (this.pathTargetX !== null && this.pathTargetZ !== null) {
+                const bg = this.pathfinder.worldToGrid(this.pathTargetX, this.pathTargetZ);
+                this.log(`STUCK: blacklist (${bg.x},${bg.z})`);
+                this.blacklistedTargets.add(`${bg.x},${bg.z}`);
+            }
+            this.clearPath();
+            this.committedTarget = null;
             this.stuckCounter = 0;
         }
     }
@@ -99,20 +124,16 @@ class BotAI {
     decideAction() {
         const { game, playerPos, enemies, boss, items, stairs } = this.state;
         const shrine = this.state.shrine;
-
-        // --- nearby enemies: always fight if close (collision blocks movement) ---
         const nearbyEnemy = enemies.find(e => this.distanceTo(e.x, e.z) < 3);
 
         // === ITEM USAGE (highest priority) ===
 
-        // Use torch IMMEDIATELY if not lit and have one
         if (!game.torchActive && game.items.includes('torch')) {
             const ti = game.items.indexOf('torch');
             this.debugInfo.reason = 'USE TORCH NOW';
             return { action: 'use_item', itemIndex: ti + 1 };
         }
 
-        // Emergency heal (HP < 30%)
         if (game.hp < game.maxHp * 0.3) {
             const pi = game.items.indexOf('potion');
             if (pi !== -1) {
@@ -121,28 +142,24 @@ class BotAI {
             }
         }
 
-        // Use MP potion if low MP and have one
         if (game.mp < 15 && game.items.includes('mpPotion')) {
             const mi = game.items.indexOf('mpPotion');
             this.debugInfo.reason = 'use MP potion';
             return { action: 'use_item', itemIndex: mi + 1 };
         }
 
-        // Use charm (defense buff) before boss fight or near enemies
         if ((nearbyEnemy || (boss && boss.active)) && game.items.includes('charm') && !game.shieldBuff) {
             const ci = game.items.indexOf('charm');
             this.debugInfo.reason = 'use charm for defense';
             return { action: 'use_item', itemIndex: ci + 1 };
         }
 
-        // Use shield (permanent ATK boost) when available
         if (game.items.includes('shield')) {
             const si = game.items.indexOf('shield');
             this.debugInfo.reason = 'use shield for ATK boost';
             return { action: 'use_item', itemIndex: si + 1 };
         }
 
-        // Proactive heal (HP < 60% and not in combat)
         if (game.hp < game.maxHp * 0.6 && !nearbyEnemy && !(boss && boss.active)) {
             const pi = game.items.indexOf('potion');
             if (pi !== -1) {
@@ -151,7 +168,7 @@ class BotAI {
             }
         }
 
-        // Fight nearby enemies (they block movement due to collision)
+        // === COMBAT ===
         if (nearbyEnemy && game.mp >= 5) {
             const targetAngle = this.angleTo(nearbyEnemy.x, nearbyEnemy.z);
             const diff = this.normalizeAngle(targetAngle - this.state.playerAngle);
@@ -163,74 +180,88 @@ class BotAI {
             return { action: 'attack' };
         }
 
+        // === SHRINE (if adjacent) ===
         const shrineAvailable = shrine && !game.shrineUsed && this.shrineAttempts < this.maxShrineAttempts;
+        if (shrineAvailable && this.distanceTo(shrine.x, shrine.z) < 1.5) {
+            this.shrineAttempts++;
+            this.debugInfo.reason = `interact shrine (try ${this.shrineAttempts})`;
+            return { action: 'interact' };
+        }
 
-        // --- Shrine interact if right next to it ---
-        if (shrineAvailable) {
-            const shrineDist = this.distanceTo(shrine.x, shrine.z);
-            if (shrineDist < 1.5) {
-                this.shrineAttempts++;
-                this.debugInfo.reason = `interact shrine (try ${this.shrineAttempts})`;
-                return { action: 'interact' };
+        // === PICK UP ITEMS (reduce range when urgent objectives exist) ===
+        const pickupItems = items.filter(i => {
+            if (i.type === 'key') return false;
+            const g = this.pathfinder.worldToGrid(i.x, i.z);
+            return !this.blacklistedTargets.has(`${g.x},${g.z}`);
+        });
+        if (pickupItems.length > 0) {
+            pickupItems.sort((a, b) => this.distanceTo(a.x, a.z) - this.distanceTo(b.x, b.z));
+            const closest = pickupItems[0];
+            const dist = this.distanceTo(closest.x, closest.z);
+            // When stairs or active boss visible, only detour for very close items
+            const hasUrgentObj = stairs || (boss && boss.active);
+            const pickupRange = hasUrgentObj ? 2 : 5;
+            if (dist < pickupRange) {
+                const result = this.tryMoveToward(closest.x, closest.z);
+                if (result) {
+                    this.phase = 'pickup_item';
+                    this.debugInfo.reason = `pickup ${closest.type} (dist=${dist.toFixed(1)})`;
+                    return result;
+                }
             }
         }
 
-        // --- Phase 1: acquire boss key ---
+        // === PHASE: GET KEY ===
         if (!game.hasBossKey) {
             this.phase = 'get_key';
-
             const key = items.find(i => i.type === 'key');
             if (key) {
                 this.debugInfo.reason = `move to key (${key.x.toFixed(1)},${key.z.toFixed(1)})`;
                 return this.moveToward(key.x, key.z);
             }
-            this.debugInfo.reason = 'explore for key';
             return this.explore();
         }
 
-        // --- Visit shrine before boss if close enough (< 20 units) ---
-        if (shrineAvailable && boss && !boss.active) {
-            const shrineDist = this.distanceTo(shrine.x, shrine.z);
-            if (shrineDist < 20) {
+        // === SHRINE (if close and before boss) ===
+        if (shrineAvailable && boss && !boss.active && this.distanceTo(shrine.x, shrine.z) < 20) {
+            const result = this.tryMoveToward(shrine.x, shrine.z);
+            if (result) {
                 this.phase = 'get_shrine';
-                this.debugInfo.reason = `move to shrine (dist=${shrineDist.toFixed(1)})`;
-                return this.moveToward(shrine.x, shrine.z);
+                this.debugInfo.reason = `move to shrine`;
+                return result;
             }
         }
 
-        // --- Phase 2: activate boss ---
+        // === PHASE: BOSS ===
         if (boss && !boss.active) {
             this.phase = 'fight_boss';
-            const dist = this.distanceTo(boss.x, boss.z);
-            if (dist < 5) {
+            if (this.distanceTo(boss.x, boss.z) < 5) {
                 this.debugInfo.reason = 'interact boss';
                 this.actionCooldown = 5;
                 return { action: 'interact' };
             }
-            this.debugInfo.reason = `move to boss (${boss.x.toFixed(1)},${boss.z.toFixed(1)})`;
+            this.debugInfo.reason = 'move to boss';
             return this.moveToward(boss.x, boss.z);
         }
 
-        // --- Phase 3: fight boss ---
         if (boss && boss.active) {
             this.phase = 'fight_boss';
             return this.fightBoss();
         }
 
-        // --- Phase 4: ascend ---
+        // === PHASE: ASCEND ===
         if (stairs) {
             this.phase = 'ascend';
-            const dist = this.distanceTo(stairs.x, stairs.z);
-            if (dist < 1.5) {
-                this.debugInfo.reason = `interact stairs (dist=${dist.toFixed(1)})`;
+            if (this.distanceTo(stairs.x, stairs.z) < 1.5) {
+                this.debugInfo.reason = 'interact stairs';
                 return { action: 'interact' };
             }
-            this.debugInfo.reason = `move to stairs (dist=${dist.toFixed(1)})`;
+            this.debugInfo.reason = 'move to stairs';
             return this.moveToward(stairs.x, stairs.z);
         }
 
+        // === PHASE: EXPLORE ===
         this.phase = 'explore';
-        this.debugInfo.reason = 'explore (no objective)';
         return this.explore();
     }
 
@@ -239,9 +270,8 @@ class BotAI {
     /* ------------------------------------------------------------------ */
 
     fightBoss() {
-        const { game, boss, playerPos } = this.state;
+        const { game, boss } = this.state;
 
-        // Heal
         if (game.hp < game.maxHp * 0.5) {
             const pi = game.items.indexOf('potion');
             if (pi !== -1) {
@@ -249,22 +279,16 @@ class BotAI {
                 return { action: 'use_item', itemIndex: pi + 1 };
             }
         }
-
-        // Use MP potion if low
         if (game.mp < 10 && game.items.includes('mpPotion')) {
             const mi = game.items.indexOf('mpPotion');
             this.debugInfo.reason = 'boss-fight mp potion';
             return { action: 'use_item', itemIndex: mi + 1 };
         }
-
-        // Use charm for defense buff
         if (game.items.includes('charm') && !game.shieldBuff) {
             const ci = game.items.indexOf('charm');
             this.debugInfo.reason = 'boss-fight use charm';
             return { action: 'use_item', itemIndex: ci + 1 };
         }
-
-        // Use shield if available (pre-fight ATK boost)
         if (game.items.includes('shield')) {
             const si = game.items.indexOf('shield');
             this.debugInfo.reason = 'boss-fight use shield';
@@ -274,89 +298,86 @@ class BotAI {
         const dist = this.distanceTo(boss.x, boss.z);
         const targetAngle = this.angleTo(boss.x, boss.z);
 
-        // TELEGRAPH DODGE: if boss is telegraphing, retreat to distance > 6
         if (boss.telegraphing) {
             if (dist < 7) {
-                const awayAngle = targetAngle + Math.PI;
-                this.debugInfo.reason = `boss-fight DODGE telegraph (dist=${dist.toFixed(1)})`;
-                return {
-                    action: 'turn_and_move',
-                    angle: awayAngle,
-                    keys: ['w']
-                };
+                this.debugInfo.reason = 'DODGE telegraph';
+                return { action: 'turn_and_move', angle: targetAngle + Math.PI, keys: ['w'] };
             }
-            // Safe distance — wait out the telegraph
-            this.debugInfo.reason = 'boss-fight waiting out telegraph';
+            this.debugInfo.reason = 'wait out telegraph';
             return { action: 'none' };
         }
 
-        // BACKSTAB: if boss is stunned, try to get behind
         if (boss.stunned) {
-            // Move to boss's back (opposite of boss facing)
             const bossBackAngle = (boss.rotationY || 0) + Math.PI;
             const behindX = boss.x - Math.sin(bossBackAngle) * 3;
             const behindZ = boss.z - Math.cos(bossBackAngle) * 3;
-            const behindDist = this.distanceTo(behindX, behindZ);
-
-            if (behindDist < 1.5 && game.mp >= 5) {
+            if (this.distanceTo(behindX, behindZ) < 1.5 && game.mp >= 5) {
                 const faceAngle = this.angleTo(boss.x, boss.z);
-                const diff = this.normalizeAngle(faceAngle - this.state.playerAngle);
-                if (Math.abs(diff) > 0.2) {
-                    this.debugInfo.reason = 'backstab face boss';
+                if (Math.abs(this.normalizeAngle(faceAngle - this.state.playerAngle)) > 0.2) {
+                    this.debugInfo.reason = 'backstab face';
                     return { action: 'turn', angle: faceAngle };
                 }
-                this.debugInfo.reason = 'backstab attack!';
+                this.debugInfo.reason = 'backstab!';
                 return { action: 'attack' };
             }
-            this.debugInfo.reason = 'move behind stunned boss';
+            this.debugInfo.reason = 'move behind boss';
             return this.moveToward(behindX, behindZ);
         }
 
-        // Hit-and-run: attack then retreat to avoid boss damage
         if (game.mp >= 5 && dist < 4) {
             const diff = this.normalizeAngle(targetAngle - this.state.playerAngle);
             if (Math.abs(diff) > 0.2) {
-                this.debugInfo.reason = 'boss-fight face boss';
+                this.debugInfo.reason = 'face boss';
                 return { action: 'turn', angle: targetAngle };
             }
-            this.debugInfo.reason = 'boss-fight attack';
+            this.debugInfo.reason = 'attack boss';
             return { action: 'attack' };
         }
 
-        // No MP or too far: kite away from boss to regen MP safely
         if (game.mp < 5 && dist < 5) {
-            const awayAngle = targetAngle + Math.PI;
-            this.debugInfo.reason = `boss-fight retreat (MP=${Math.round(game.mp)})`;
-            return {
-                action: 'turn_and_move',
-                angle: awayAngle,
-                keys: ['w']
-            };
+            this.debugInfo.reason = 'retreat (low MP)';
+            return { action: 'turn_and_move', angle: targetAngle + Math.PI, keys: ['w'] };
         }
 
-        // Approach boss
         if (dist >= 4) {
-            this.debugInfo.reason = `boss-fight approach (dist=${dist.toFixed(1)})`;
+            this.debugInfo.reason = 'approach boss';
             return this.moveToward(boss.x, boss.z);
         }
 
-        // Close range, waiting for MP — circle strafe
-        this.debugInfo.reason = `boss-fight strafe (MP=${Math.round(game.mp)})`;
-        return {
-            action: 'turn_and_move',
-            angle: targetAngle,
-            keys: ['a']
-        };
+        this.debugInfo.reason = 'strafe boss';
+        return { action: 'turn_and_move', angle: targetAngle, keys: ['a'] };
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Movement with A* pathfinding                                      */
+    /*  Movement (with path caching)                                      */
     /* ------------------------------------------------------------------ */
 
-    moveToward(targetX, targetZ) {
-        const { playerPos } = this.state;
+    /** Try to path to target. Returns action or null if no path. Caches path. */
+    tryMoveToward(targetX, targetZ) {
+        const targetChanged =
+            this.pathTargetX === null ||
+            Math.abs(targetX - this.pathTargetX) > 2 ||
+            Math.abs(targetZ - this.pathTargetZ) > 2;
 
-        // Only recalculate path when target changed significantly
+        if (!this.currentPath || targetChanged) {
+            const path = this.pathfinder.findPath(
+                this.state.playerPos.x, this.state.playerPos.z, targetX, targetZ
+            );
+            if (!path || path.length === 0) {
+                const bg = this.pathfinder.worldToGrid(targetX, targetZ);
+                this.blacklistedTargets.add(`${bg.x},${bg.z}`);
+                this.log(`tryMove FAIL → blacklist (${bg.x},${bg.z})`);
+                return null;
+            }
+            this.currentPath = path;
+            this.pathTargetX = targetX;
+            this.pathTargetZ = targetZ;
+        }
+        return this._followPath(targetX, targetZ);
+    }
+
+    /** Move toward target (always returns action). Caches path. */
+    moveToward(targetX, targetZ) {
         const targetChanged =
             this.pathTargetX === null ||
             Math.abs(targetX - this.pathTargetX) > 2 ||
@@ -364,88 +385,136 @@ class BotAI {
 
         if (!this.currentPath || targetChanged) {
             this.currentPath = this.pathfinder.findPath(
-                playerPos.x, playerPos.z,
-                targetX, targetZ
+                this.state.playerPos.x, this.state.playerPos.z, targetX, targetZ
             );
             this.pathTargetX = targetX;
             this.pathTargetZ = targetZ;
         }
 
         if (!this.currentPath || this.currentPath.length === 0) {
-            // Fallback: walk directly (will bump into walls but at least tries)
+            const bg = this.pathfinder.worldToGrid(targetX, targetZ);
+            this.blacklistedTargets.add(`${bg.x},${bg.z}`);
             return this.walkDirectly(targetX, targetZ);
         }
 
-        // Follow path sequentially
-        const next = this.pathfinder.getNextWaypoint(
-            this.currentPath, playerPos.x, playerPos.z
-        );
+        return this._followPath(targetX, targetZ);
+    }
 
+    _followPath(targetX, targetZ) {
+        const next = this.pathfinder.getNextWaypoint(
+            this.currentPath, this.state.playerPos.x, this.state.playerPos.z
+        );
         if (!next) {
             this.currentPath = null;
             return this.walkDirectly(targetX, targetZ);
         }
-
-        // Trim already-passed waypoints so the path shrinks over time
-        if (next.index > 0) {
-            this.currentPath = this.currentPath.slice(next.index);
-        }
-
+        if (next.index > 0) this.currentPath = this.currentPath.slice(next.index);
         return this.walkDirectly(next.waypoint.x, next.waypoint.z);
     }
 
-    /**
-     * Turn toward (x,z) and press 'w' in one tick.
-     */
     walkDirectly(x, z) {
-        const dist = this.distanceTo(x, z);
-        if (dist < 0.3) return { action: 'none' };
-
-        return {
-            action: 'turn_and_move',
-            angle: this.angleTo(x, z),
-            keys: ['w']
-        };
+        if (this.distanceTo(x, z) < 0.3) return { action: 'none' };
+        return { action: 'turn_and_move', angle: this.angleTo(x, z), keys: ['w'] };
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Exploration                                                       */
+    /*  DFS Exploration with committed target                             */
     /* ------------------------------------------------------------------ */
 
     explore() {
+        // If we have a committed target, keep going toward it
+        if (this.committedTarget) {
+            const ct = this.committedTarget;
+            const ctg = this.pathfinder.worldToGrid(ct.x, ct.z);
+            const ctKey = `${ctg.x},${ctg.z}`;
+
+            // Check if reached or blacklisted
+            if (this.distanceTo(ct.x, ct.z) < 2 || this.visitedCells.has(ctKey)
+                || this.blacklistedTargets.has(ctKey)) {
+                this.committedTarget = null;
+                this.clearPath();
+            } else {
+                const result = this.tryMoveToward(ct.x, ct.z);
+                if (result) {
+                    this.debugInfo.reason = `explore → (${ctg.x},${ctg.z}) dist=${this.distanceTo(ct.x, ct.z).toFixed(0)}`;
+                    return result;
+                }
+                // Can't reach, abandon
+                this.committedTarget = null;
+                this.clearPath();
+            }
+        }
+
+        // Find frontier cells (unvisited walkable cells adjacent to visited)
+        const frontiers = this._findFrontiers();
+
+        if (frontiers.length === 0) {
+            this.debugInfo.reason = 'explore wander (no frontier)';
+            return this.wander();
+        }
+
+        // BFS: sort nearest from player first to chain along corridors
         const { playerPos } = this.state;
+        frontiers.sort((a, b) => {
+            const da = (a.x - playerPos.x) ** 2 + (a.z - playerPos.z) ** 2;
+            const db = (b.x - playerPos.x) ** 2 + (b.z - playerPos.z) ** 2;
+            return da - db; // nearest first
+        });
 
-        // Rebuild list when exhausted
-        if (this.explorationTargets.length === 0 ||
-            this.explorationIndex >= this.explorationTargets.length) {
+        this.log(`explore: ${frontiers.length} frontier cells (BFS)`);
 
-            const raw = this.pathfinder.findUnexploredAreas(this.visitedCells);
-            if (raw.length === 0) return this.wander();
-
-            // Sort by distance to player so we explore nearby cells first
-            raw.sort((a, b) => {
-                const da = Math.pow(a.x - playerPos.x, 2) + Math.pow(a.z - playerPos.z, 2);
-                const db = Math.pow(b.x - playerPos.x, 2) + Math.pow(b.z - playerPos.z, 2);
-                return da - db;
-            });
-
-            this.explorationTargets = raw;
-            this.explorationIndex = 0;
+        // Try top candidates until one is reachable, commit to it
+        for (let i = 0; i < Math.min(10, frontiers.length); i++) {
+            const target = frontiers[i];
+            const result = this.tryMoveToward(target.x, target.z);
+            if (result) {
+                this.committedTarget = target;
+                const tg = this.pathfinder.worldToGrid(target.x, target.z);
+                this.debugInfo.reason = `explore → (${tg.x},${tg.z}) dist=${this.distanceTo(target.x, target.z).toFixed(0)}`;
+                return result;
+            }
         }
 
-        const target = this.explorationTargets[this.explorationIndex];
-        if (this.distanceTo(target.x, target.z) < 2) {
-            this.explorationIndex++;
+        this.debugInfo.reason = 'explore wander (no reachable)';
+        return this.wander();
+    }
+
+    /** Find frontier: unvisited walkable cells adjacent to visited cells */
+    _findFrontiers() {
+        const frontiers = [];
+        const seen = new Set();
+        const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+
+        for (const key of this.visitedCells) {
+            const [vx, vz] = key.split(',').map(Number);
+            for (const [dx, dz] of dirs) {
+                const nx = vx + dx, nz = vz + dz;
+                const nkey = `${nx},${nz}`;
+                if (!seen.has(nkey) && !this.visitedCells.has(nkey)
+                    && !this.blacklistedTargets.has(nkey)
+                    && this.pathfinder.isWalkable(nx, nz)) {
+                    seen.add(nkey);
+                    frontiers.push(this.pathfinder.gridToWorld(nx, nz));
+                }
+            }
         }
 
-        return this.moveToward(target.x, target.z);
+        return frontiers;
     }
 
     wander() {
-        const { mapSize, cellSize } = this.state;
-        const rx = (Math.floor(Math.random() * (mapSize - 2)) + 1) * cellSize + cellSize / 2;
-        const rz = (Math.floor(Math.random() * (mapSize - 2)) + 1) * cellSize + cellSize / 2;
-        return this.moveToward(rx, rz);
+        const { mapSize } = this.state;
+        for (let i = 0; i < 20; i++) {
+            const rx = Math.floor(Math.random() * (mapSize - 2)) + 1;
+            const rz = Math.floor(Math.random() * (mapSize - 2)) + 1;
+            if (this.pathfinder.isWalkable(rx, rz) && !this.blacklistedTargets.has(`${rx},${rz}`)) {
+                const w = this.pathfinder.gridToWorld(rx, rz);
+                this.debugInfo.reason = `wander → (${rx},${rz})`;
+                return this.moveToward(w.x, w.z);
+            }
+        }
+        this.debugInfo.reason = 'wander forward';
+        return { action: 'turn_and_move', angle: this.state.playerAngle, keys: ['w'] };
     }
 
     /* ------------------------------------------------------------------ */
@@ -459,10 +528,7 @@ class BotAI {
     }
 
     angleTo(x, z) {
-        return Math.atan2(
-            x - this.state.playerPos.x,
-            z - this.state.playerPos.z
-        );
+        return Math.atan2(x - this.state.playerPos.x, z - this.state.playerPos.z);
     }
 
     normalizeAngle(a) {
@@ -472,12 +538,10 @@ class BotAI {
     }
 
     getPhase() { return this.phase; }
-
     getDebugInfo() { return this.debugInfo; }
 
     getExplorationProgress() {
         if (!this.state) return { visited: 0, total: 0, percentage: 0 };
-        // Count only walkable cells, not walls
         let walkable = 0;
         for (let z = 0; z < this.state.mapSize; z++)
             for (let x = 0; x < this.state.mapSize; x++)

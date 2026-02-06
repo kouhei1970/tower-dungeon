@@ -1,5 +1,8 @@
 # Abyssal Dungeon - Development Rules
 
+## 応答言語
+- ユーザーへの応答は日本語で行うこと
+
 ## Versioning
 - Version format: `MAJOR.MINOR.PATCH` (e.g., 2.3.1)
 - **MINOR**: 新機能追加時にインクリメント (e.g., 2.3.0 → 2.4.0)

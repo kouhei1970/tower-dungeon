@@ -257,32 +257,53 @@ async function runTest(options) {
                 },
                 playerPos: { x: playerPos.x, z: playerPos.z },
                 playerAngle,
-                enemies: enemies.map(e => ({
+                enemies: enemies.filter(e => {
+                    const gx = Math.floor(e.mesh.position.x / cellSize);
+                    const gz = Math.floor(e.mesh.position.z / cellSize);
+                    return mapRevealed[gz] && mapRevealed[gz][gx];
+                }).map(e => ({
                     x: e.mesh.position.x, z: e.mesh.position.z,
                     hp: e.hp, maxHp: e.maxHp,
                     type: e.type || 'skeleton'
                 })),
-                boss: boss ? {
-                    x: boss.mesh.position.x, z: boss.mesh.position.z,
-                    hp: boss.hp, maxHp: boss.maxHp, active: boss.active,
-                    type: boss.type || 'guardian',
-                    telegraphing: boss.telegraphing || false,
-                    telegraphProgress: boss.telegraphing
-                        ? Math.min(1, (Date.now() - boss.telegraphStart) / boss.telegraphTime)
-                        : 0,
-                    stunned: boss.stunned || false,
-                    enraged: boss.enraged || false,
-                    rotationY: boss.mesh.rotation.y
-                } : null,
-                items: items.map(i => ({ x: i.x, z: i.z, type: i.type })),
+                boss: (boss && (() => {
+                    const gx = Math.floor(boss.mesh.position.x / cellSize);
+                    const gz = Math.floor(boss.mesh.position.z / cellSize);
+                    if (!mapRevealed[gz] || !mapRevealed[gz][gx]) return null;
+                    return {
+                        x: boss.mesh.position.x, z: boss.mesh.position.z,
+                        hp: boss.hp, maxHp: boss.maxHp, active: boss.active,
+                        type: boss.type || 'guardian',
+                        telegraphing: boss.telegraphing || false,
+                        telegraphProgress: boss.telegraphing
+                            ? Math.min(1, (Date.now() - boss.telegraphStart) / boss.telegraphTime)
+                            : 0,
+                        stunned: boss.stunned || false,
+                        enraged: boss.enraged || false,
+                        rotationY: boss.mesh.rotation.y
+                    };
+                })()) || null,
+                items: items.filter(i => {
+                    const gx = Math.floor(i.x / cellSize);
+                    const gz = Math.floor(i.z / cellSize);
+                    return mapRevealed[gz] && mapRevealed[gz][gx];
+                }).map(i => ({ x: i.x, z: i.z, type: i.type })),
                 doors: doors.map(d => ({ x: d.x, z: d.z, isOpen: d.isOpen })),
-                stairs: stairs ? { x: stairs.position.x, z: stairs.position.z } : null,
-                shrine: shrine && !game.shrineUsed
-                    ? { x: shrine.position.x, z: shrine.position.z }
-                    : null,
+                stairs: (stairs && (() => {
+                    const gx = Math.floor(stairs.position.x / cellSize);
+                    const gz = Math.floor(stairs.position.z / cellSize);
+                    if (!mapRevealed[gz] || !mapRevealed[gz][gx]) return null;
+                    return { x: stairs.position.x, z: stairs.position.z };
+                })()) || null,
+                shrine: (shrine && !game.shrineUsed && (() => {
+                    const gx = Math.floor(shrine.position.x / cellSize);
+                    const gz = Math.floor(shrine.position.z / cellSize);
+                    if (!mapRevealed[gz] || !mapRevealed[gz][gx]) return null;
+                    return { x: shrine.position.x, z: shrine.position.z };
+                })()) || null,
                 map, mapSize, cellSize
             }),
-            pressKey: (k)   => { keys[k] = true; setTimeout(() => keys[k] = false, 200); },
+            pressKey: (k)   => { keys[k] = true; setTimeout(() => keys[k] = false, 100); },
             doAttack:  ()   => { if (typeof attack   === 'function') attack(); },
             doInteract:()   => { if (typeof interact === 'function') interact(); },
             setAngle:  (a)  => { playerAngle = a; },
@@ -384,68 +405,98 @@ async function runTest(options) {
                 console.log(`[${sec(elapsed)}] BUG  ${b.severity.toUpperCase()}  ${b.type}: ${b.description}`);
             }
 
-            /* -- bot decision -- */
+            /* -- bot decision + execute + HUD update in single evaluate -- */
             const action = bot.update(state);
-            await executeAction(page, action);
             results.actions++;
-
-            /* -- update debug HUD in browser -- */
             const progress = bot.getExplorationProgress();
             const debug = bot.getDebugInfo();
-            await page.evaluate(({ phase, reason, hp, maxHp, mp, maxMp, floor,
-                                   explored, bossHp, hasBossKey, enemies, actions,
-                                   combo, shrine, telegraph, bossType }) => {
+
+            await page.evaluate(({ action, hud }) => {
+                // Execute action
+                if (action && action.action !== 'none') {
+                    switch (action.action) {
+                        case 'move':
+                            if (action.keys) action.keys.forEach(k => window.gameAPI.pressKey(k));
+                            break;
+                        case 'turn':
+                            window.gameAPI.setAngle(action.angle);
+                            break;
+                        case 'turn_and_move':
+                            window.gameAPI.setAngle(action.angle);
+                            if (action.keys) action.keys.forEach(k => window.gameAPI.pressKey(k));
+                            break;
+                        case 'attack':
+                            window.gameAPI.doAttack();
+                            break;
+                        case 'interact':
+                            window.gameAPI.doInteract();
+                            break;
+                        case 'use_item':
+                            window.gameAPI.useItem(action.itemIndex);
+                            break;
+                    }
+                }
+                // Update HUD
                 const h = window._debugHUD;
-                if (!h) return;
-                h.textContent =
-                    `AUTO-TEST  actions: ${actions}\n` +
-                    `──────────────────────────\n` +
-                    `Floor   : ${floor}\n` +
-                    `Phase   : ${phase}\n` +
-                    `Reason  : ${reason}\n` +
-                    `HP      : ${hp}/${maxHp}\n` +
-                    `MP      : ${mp}/${maxMp}\n` +
-                    `Explored: ${explored}%\n` +
-                    `BossKey : ${hasBossKey ? 'YES' : 'no'}\n` +
-                    `Boss    : ${bossType} HP=${bossHp}\n` +
-                    `Telegr  : ${telegraph}\n` +
-                    `Enemies : ${enemies}\n` +
-                    `Combo   : ${combo}\n` +
-                    `Shrine  : ${shrine}\n`;
+                if (h) {
+                    h.textContent =
+                        `AUTO-TEST  actions: ${hud.actions}\n` +
+                        `──────────────────────────\n` +
+                        `Floor   : ${hud.floor}\n` +
+                        `Phase   : ${hud.phase}\n` +
+                        `Reason  : ${hud.reason}\n` +
+                        `HP      : ${hud.hp}/${hud.maxHp}\n` +
+                        `MP      : ${hud.mp}/${hud.maxMp}\n` +
+                        `Explored: ${hud.explored}%\n` +
+                        `BossKey : ${hud.hasBossKey ? 'YES' : 'no'}\n` +
+                        `Boss    : ${hud.bossType} HP=${hud.bossHp}\n` +
+                        `Telegr  : ${hud.telegraph}\n` +
+                        `Enemies : ${hud.enemies}\n` +
+                        `Combo   : ${hud.combo}\n` +
+                        `Shrine  : ${hud.shrine}\n`;
+                }
             }, {
-                phase: bot.getPhase(),
-                reason: debug.reason || '-',
-                hp: Math.round(state.game.hp), maxHp: state.game.maxHp,
-                mp: Math.round(state.game.mp), maxMp: state.game.maxMp,
-                floor: state.game.floor,
-                explored: progress.percentage,
-                bossHp: state.boss ? `${Math.round(state.boss.hp)}/${state.boss.maxHp}` : 'n/a',
-                hasBossKey: state.game.hasBossKey,
-                enemies: state.enemies.length,
-                actions: results.actions,
-                combo: state.game.comboCount || 0,
-                shrine: state.shrine ? 'available' : (state.game.shrineUsed ? 'used' : 'n/a'),
-                telegraph: state.boss && state.boss.telegraphing
-                    ? `${Math.round(state.boss.telegraphProgress * 100)}%`
-                    : 'no',
-                bossType: state.boss ? state.boss.type : 'n/a'
+                action,
+                hud: {
+                    phase: bot.getPhase(),
+                    reason: debug.reason || '-',
+                    hp: Math.round(state.game.hp), maxHp: state.game.maxHp,
+                    mp: Math.round(state.game.mp), maxMp: state.game.maxMp,
+                    floor: state.game.floor,
+                    explored: progress.percentage,
+                    bossHp: state.boss ? `${Math.round(state.boss.hp)}/${state.boss.maxHp}` : 'n/a',
+                    hasBossKey: state.game.hasBossKey,
+                    enemies: state.enemies.length,
+                    actions: results.actions,
+                    combo: state.game.comboCount || 0,
+                    shrine: state.shrine ? 'available' : (state.game.shrineUsed ? 'used' : 'n/a'),
+                    telegraph: state.boss && state.boss.telegraphing
+                        ? `${Math.round(state.boss.telegraphProgress * 100)}%`
+                        : 'no',
+                    bossType: state.boss ? state.boss.type : 'n/a'
+                }
             });
 
-            /* -- console progress (every 50 actions) -- */
-            if (verbose && results.actions % 50 === 0) {
+            /* -- console progress -- */
+            if (verbose && results.actions % 20 === 0) {
                 console.log(
                     `[${sec(elapsed)}] ` +
                     `floor=${state.game.floor}  phase=${bot.getPhase()}  ` +
                     `hp=${Math.round(state.game.hp)}/${state.game.maxHp}  ` +
                     `explored=${progress.percentage}%  ` +
+                    `stuck=${bot.stuckCounter}  none=${bot.noneCounter}  bl=${bot.blacklistedTargets.size}  ` +
                     `reason="${debug.reason || '-'}"`
                 );
+                // Dump bot log if there are entries
+                while (bot.logLines.length > 0) {
+                    console.log(`       [bot] ${bot.logLines.shift()}`);
+                }
             }
 
-            await sleep(100);
+            await sleep(50);
         } catch (err) {
             console.error(`[error] ${err.message}`);
-            await sleep(500);
+            await sleep(200);
         }
     }
 
