@@ -1964,8 +1964,8 @@
                     const dz = z - pgz;
                     const dist = Math.sqrt(dx * dx + dz * dz);
 
-                    if (dist <= viewRadius) {
-                        // Within view: boost memory (closer = stronger)
+                    if (dist <= viewRadius && mapRevealed[z] && mapRevealed[z][x]) {
+                        // Within view AND revealed (not behind closed door/wall): boost memory
                         const strength = 1.0 - (dist / (viewRadius + 1)) * 0.3;
                         mapMemory[z][x] = Math.min(1.0, Math.max(mapMemory[z][x], strength));
                     } else {
@@ -2594,6 +2594,12 @@
                 }
             }
 
+            // Helper: check if a world position is in a revealed area (not behind closed door/wall)
+            function isRevealed(wx, wz) {
+                const gx = Math.floor(wx / cellSize);
+                const gz = Math.floor(wz / cellSize);
+                return mapRevealed[gz] && mapRevealed[gz][gx];
+            }
             // Helper: check if a world position is currently remembered
             function isRemembered(wx, wz) {
                 const gx = Math.floor(wx / cellSize);
@@ -2628,14 +2634,15 @@
                 wraith: '153,102,204', golem: '136,136,119'
             };
             enemies.forEach(e => {
+                if (!isRevealed(e.mesh.position.x, e.mesh.position.z)) return;
                 if (!isInView(e.mesh.position.x, e.mesh.position.z)) return;
                 const rgb = enemyColorsRGB[e.type] || '255,68,68';
                 ctx.fillStyle = `rgba(${rgb},1)`;
                 ctx.fillRect(e.mesh.position.x / cellSize * scale - 2, e.mesh.position.z / cellSize * scale - 2, 4, 4);
             });
 
-            // Draw shrine (show if remembered)
-            if (shrine && !game.shrineUsed && isRemembered(shrine.position.x, shrine.position.z)) {
+            // Draw shrine (show if revealed and remembered)
+            if (shrine && !game.shrineUsed && isRevealed(shrine.position.x, shrine.position.z) && isRemembered(shrine.position.x, shrine.position.z)) {
                 const a = memAlpha(shrine.position.x, shrine.position.z);
                 ctx.fillStyle = `rgba(255,215,0,${a})`;
                 const sx = shrine.position.x / cellSize * scale;
@@ -2649,8 +2656,8 @@
                 ctx.fill();
             }
 
-            // Draw boss (show if remembered or in view)
-            if (boss && isRemembered(boss.mesh.position.x, boss.mesh.position.z)) {
+            // Draw boss (show if revealed AND remembered)
+            if (boss && isRevealed(boss.mesh.position.x, boss.mesh.position.z) && isRemembered(boss.mesh.position.x, boss.mesh.position.z)) {
                 const a = isInView(boss.mesh.position.x, boss.mesh.position.z) ? 1.0
                         : memAlpha(boss.mesh.position.x, boss.mesh.position.z);
                 if (boss.telegraphing && Math.floor(Date.now() / 200) % 2 === 0) {
@@ -2661,8 +2668,8 @@
                 ctx.fillRect(boss.mesh.position.x / cellSize * scale - 3, boss.mesh.position.z / cellSize * scale - 3, 6, 6);
             }
 
-            // Draw stairs (show if remembered)
-            if (stairs && isRemembered(stairs.position.x, stairs.position.z)) {
+            // Draw stairs (show if revealed and remembered)
+            if (stairs && isRevealed(stairs.position.x, stairs.position.z) && isRemembered(stairs.position.x, stairs.position.z)) {
                 const a = memAlpha(stairs.position.x, stairs.position.z);
                 ctx.fillStyle = `rgba(0,255,0,${a})`;
                 ctx.fillRect(stairs.position.x / cellSize * scale - 3, stairs.position.z / cellSize * scale - 3, 6, 6);
