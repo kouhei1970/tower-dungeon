@@ -840,9 +840,46 @@
             }
             game.hasBossKey = false;
 
-            // Spawn shrine (random position)
+            // Spawn shrine - find position far from both player and boss
             if (openSpaces.length > 5) {
-                const shrinePos = openSpaces.shift();
+                const minShrineDistance = 8;
+                let shrinePos = null;
+
+                // Find position that is far from both player and boss
+                for (let i = 0; i < openSpaces.length; i++) {
+                    const pos = openSpaces[i];
+                    const dpx = pos.x - playerSpawn.x;
+                    const dpz = pos.z - playerSpawn.z;
+                    const distPlayer = Math.sqrt(dpx * dpx + dpz * dpz);
+                    const dbx = pos.x - bossSpawn.x;
+                    const dbz = pos.z - bossSpawn.z;
+                    const distBoss = Math.sqrt(dbx * dbx + dbz * dbz);
+
+                    if (distPlayer >= minShrineDistance && distBoss >= minShrineDistance) {
+                        shrinePos = openSpaces.splice(i, 1)[0];
+                        break;
+                    }
+                }
+
+                // Fallback: find position with maximum combined distance
+                if (!shrinePos) {
+                    let maxCombined = 0;
+                    let maxIdx = 0;
+                    for (let i = 0; i < openSpaces.length; i++) {
+                        const pos = openSpaces[i];
+                        const dpx = pos.x - playerSpawn.x;
+                        const dpz = pos.z - playerSpawn.z;
+                        const dbx = pos.x - bossSpawn.x;
+                        const dbz = pos.z - bossSpawn.z;
+                        const combined = Math.sqrt(dpx*dpx + dpz*dpz) + Math.sqrt(dbx*dbx + dbz*dbz);
+                        if (combined > maxCombined) {
+                            maxCombined = combined;
+                            maxIdx = i;
+                        }
+                    }
+                    shrinePos = openSpaces.splice(maxIdx, 1)[0];
+                }
+
                 const sx = shrinePos.x * cellSize + cellSize / 2;
                 const sz = shrinePos.z * cellSize + cellSize / 2;
 
@@ -859,10 +896,6 @@
                 shrineLight = new THREE.PointLight(0xffdd00, 0.6, 6);
                 shrineLight.position.set(sx, 1.5, sz);
                 scene.add(shrineLight);
-
-                // Remove from openSpaces so nothing else spawns here
-                const idx = openSpaces.indexOf(shrinePos);
-                if (idx !== -1) openSpaces.splice(idx, 1);
             }
 
             // Spawn torch item (guaranteed 1 per floor, placed early for player to find)
