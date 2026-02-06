@@ -397,7 +397,7 @@
             </div>
             <div id="title-screen">
                 <h1>ABYSSAL DUNGEON</h1>
-                <p id="version-info">Version 2.3.1 | Updated: 2026-02-06</p>
+                <p id="version-info">Version 2.3.2 | Updated: 2026-02-06</p>
                 <div id="title-rules">
                     <div class="rules-columns">
                         <div class="rules-col">
@@ -1086,22 +1086,9 @@
                 return false;
             }
 
-            // Find room positions far from player
+            // Find the farthest room position from player
             const roomSpaces = openSpaces.filter(pos => isInsideRoom(pos.x, pos.z));
-            for (let i = 0; i < roomSpaces.length; i++) {
-                const pos = roomSpaces[i];
-                const dx = pos.x - playerSpawn.x;
-                const dz = pos.z - playerSpawn.z;
-                const dist = Math.sqrt(dx * dx + dz * dz);
-                if (dist >= minBossDistance) {
-                    bossSpawn = pos;
-                    const idx = openSpaces.indexOf(pos);
-                    if (idx !== -1) openSpaces.splice(idx, 1);
-                    break;
-                }
-            }
-            // Fallback: use farthest room position
-            if (!bossSpawn && roomSpaces.length > 0) {
+            if (roomSpaces.length > 0) {
                 let maxDist = 0;
                 let bestPos = null;
                 for (const pos of roomSpaces) {
