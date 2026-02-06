@@ -19,9 +19,9 @@
 | **WASD** | 移動 |
 | **マウス** | 視点操作 |
 | **クリック** | 攻撃（MP5消費） |
-| **E** | インタラクト（ボス起動、祠使用、階段昇降） |
+| **E** | インタラクト（ボス起動、祠使用、階段昇降、ドアを開ける） |
 | **TAB** | インベントリを開く |
-| **ESC** | インベントリを閉じる |
+| **ESC** | マウスフォーカス解除 / インベントリを閉じる |
 
 ### ゲームの流れ
 
@@ -175,9 +175,9 @@ Simply open `index.html` in your browser.
 | **WASD** | Move |
 | **Mouse** | Look around |
 | **Click** | Attack (costs 5 MP) |
-| **E** | Interact (activate boss, use shrine, climb stairs) |
+| **E** | Interact (activate boss, use shrine, climb stairs, open doors) |
 | **TAB** | Open inventory |
-| **ESC** | Close inventory |
+| **ESC** | Release mouse focus / Close inventory |
 
 ### Game Flow
 
