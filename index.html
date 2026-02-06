@@ -724,12 +724,14 @@
                         scene.add(wall);
                         dungeon.walls.push(wall);
                     } else if (map[z][x] === 2) {
-                        // Door - determine orientation
-                        const verticalDoor = map[z - 1] && map[z - 1][x] === 1;
+                        // Door - determine orientation based on adjacent walls
+                        // If walls are above/below, corridor runs east-west, door blocks X movement (thin X, wide Z)
+                        // If walls are left/right, corridor runs north-south, door blocks Z movement (wide X, thin Z)
+                        const wallsAboveBelow = (map[z - 1] && map[z - 1][x] === 1) || (map[z + 1] && map[z + 1][x] === 1);
                         const doorGeom = new THREE.BoxGeometry(
-                            verticalDoor ? cellSize * 0.8 : 0.2,
+                            wallsAboveBelow ? 0.2 : cellSize * 0.8,
                             2.6,
-                            verticalDoor ? 0.2 : cellSize * 0.8
+                            wallsAboveBelow ? cellSize * 0.8 : 0.2
                         );
                         const doorMesh = new THREE.Mesh(doorGeom, doorMaterial);
                         doorMesh.position.set(x * cellSize + cellSize/2, 1.3, z * cellSize + cellSize/2);
