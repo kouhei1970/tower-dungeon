@@ -286,40 +286,6 @@
         #start-btn:hover {
             background: linear-gradient(to bottom, #ffee00, #ccaa00);
         }
-        #game-over {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.9);
-            display: none;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: #fff;
-            pointer-events: auto;
-        }
-        #game-over h1 {
-            font-size: 48px;
-            color: #ff4444;
-            margin-bottom: 20px;
-        }
-        #game-over p {
-            margin: 10px 0;
-            font-size: 20px;
-        }
-        #retry-btn {
-            margin-top: 30px;
-            padding: 15px 40px;
-            font-size: 20px;
-            background: linear-gradient(to bottom, #ff4444, #aa0000);
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            color: #fff;
-            font-family: 'Courier New', monospace;
-        }
         #crosshair {
             position: absolute;
             top: 50%;
@@ -455,12 +421,6 @@
                     </div>
                 </div>
                 <button id="start-btn">START GAME</button>
-            </div>
-            <div id="game-over">
-                <h1>GAME OVER</h1>
-                <p>You reached Floor <span id="final-floor">1</span></p>
-                <p>Enemies defeated: <span id="final-kills">0</span></p>
-                <button id="retry-btn">TRY AGAIN</button>
             </div>
         </div>
     </div>
@@ -632,7 +592,6 @@
             });
 
             document.getElementById('start-btn').addEventListener('click', startGame);
-            document.getElementById('retry-btn').addEventListener('click', startGame);
 
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
@@ -663,8 +622,10 @@
             game.shieldBuffTime = 0;
 
             document.getElementById('title-screen').style.display = 'none';
-            document.getElementById('game-over').style.display = 'none';
             document.getElementById('boss-hp').style.display = 'none';
+            // Clear previous game result message
+            const resultEl = document.getElementById('game-result');
+            if (resultEl) resultEl.remove();
             document.getElementById('inventory-panel').classList.remove('open');
             inventoryOpen = false;
 
@@ -1949,10 +1910,19 @@
             inventoryOpen = false;
             document.getElementById('inventory-panel').classList.remove('open');
             document.exitPointerLock();
-            document.getElementById('final-floor').textContent = game.floor;
-            document.getElementById('final-kills').textContent = game.totalKills;
-            document.getElementById('game-over').style.display = 'flex';
             document.getElementById('boss-hp').style.display = 'none';
+
+            // Show result on title screen
+            const titleScreen = document.getElementById('title-screen');
+            let resultEl = document.getElementById('game-result');
+            if (!resultEl) {
+                resultEl = document.createElement('div');
+                resultEl.id = 'game-result';
+                resultEl.style.cssText = 'color:#ff6666;font-size:18px;margin-bottom:20px;text-align:center;';
+                titleScreen.querySelector('#start-btn').before(resultEl);
+            }
+            resultEl.innerHTML = `GAME OVER<br>Floor ${game.floor} | ${game.totalKills} kills`;
+            titleScreen.style.display = 'flex';
         }
 
         function showMessage(text) {
