@@ -50,12 +50,24 @@ class Pathfinder {
 
     /**
      * Check if a grid cell is walkable
+     * 0 = floor (walkable), 1 = wall (blocked), 2 = door (walkable)
      */
     isWalkable(gx, gz) {
         if (gx < 0 || gx >= this.mapSize || gz < 0 || gz >= this.mapSize) {
             return false;
         }
-        return this.map[gz][gx] === 0;
+        const cell = this.map[gz][gx];
+        return cell === 0 || cell === 2; // floor or door
+    }
+
+    /**
+     * Check if a cell is a door
+     */
+    isDoor(gx, gz) {
+        if (gx < 0 || gx >= this.mapSize || gz < 0 || gz >= this.mapSize) {
+            return false;
+        }
+        return this.map[gz][gx] === 2;
     }
 
     /**

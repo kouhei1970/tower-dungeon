@@ -704,8 +704,13 @@
             dungeon.ceiling.position.set(mapSize * cellSize / 2, 3, mapSize * cellSize / 2);
             scene.add(dungeon.ceiling);
 
-            // Walls
+            // Walls and Doors
             const wallGeom = new THREE.BoxGeometry(cellSize, 3, cellSize);
+            const doorMaterial = new THREE.MeshStandardMaterial({
+                color: 0x8B4513,
+                emissive: 0x331100,
+                roughness: 0.6
+            });
 
             for (let z = 0; z < mapSize; z++) {
                 for (let x = 0; x < mapSize; x++) {
@@ -716,6 +721,26 @@
                         wall.receiveShadow = true;
                         scene.add(wall);
                         dungeon.walls.push(wall);
+                    } else if (map[z][x] === 2) {
+                        // Door - determine orientation
+                        const verticalDoor = map[z - 1] && map[z - 1][x] === 1;
+                        const doorGeom = new THREE.BoxGeometry(
+                            verticalDoor ? cellSize * 0.8 : 0.2,
+                            2.6,
+                            verticalDoor ? 0.2 : cellSize * 0.8
+                        );
+                        const doorMesh = new THREE.Mesh(doorGeom, doorMaterial);
+                        doorMesh.position.set(x * cellSize + cellSize/2, 1.3, z * cellSize + cellSize/2);
+                        doorMesh.castShadow = true;
+                        scene.add(doorMesh);
+                        doors.push({
+                            x: x * cellSize + cellSize/2,
+                            z: z * cellSize + cellSize/2,
+                            gridX: x,
+                            gridZ: z,
+                            mesh: doorMesh,
+                            isOpen: false
+                        });
                     }
                 }
             }
@@ -903,6 +928,32 @@
                 const x = Math.floor(Math.random() * (width - 2)) + 1;
                 const y = Math.floor(Math.random() * (height - 2)) + 1;
                 maze[y][x] = 0;
+            }
+
+            // Add doors at narrow corridor points (map value 2 = door)
+            const doorPositions = [];
+            for (let z = 2; z < height - 2; z++) {
+                for (let x = 2; x < width - 2; x++) {
+                    if (maze[z][x] === 0) {
+                        // Check if this is a narrow corridor (walls on opposite sides)
+                        const verticalCorridor = maze[z - 1][x] === 1 && maze[z + 1][x] === 1 &&
+                                                  maze[z][x - 1] === 0 && maze[z][x + 1] === 0;
+                        const horizontalCorridor = maze[z][x - 1] === 1 && maze[z][x + 1] === 1 &&
+                                                    maze[z - 1][x] === 0 && maze[z + 1][x] === 0;
+
+                        if (verticalCorridor || horizontalCorridor) {
+                            doorPositions.push({ x, z, vertical: verticalCorridor });
+                        }
+                    }
+                }
+            }
+
+            // Place limited number of doors
+            shuffleArray(doorPositions);
+            const maxDoors = Math.min(4 + game.floor, doorPositions.length, 8);
+            for (let i = 0; i < maxDoors; i++) {
+                const pos = doorPositions[i];
+                maze[pos.z][pos.x] = 2; // Mark as door
             }
 
             return maze;
@@ -1653,6 +1704,20 @@
                     updateUI();
                 }
             }
+
+            // Auto-open nearby doors
+            for (const door of doors) {
+                if (door.isOpen) continue;
+                const doorDx = door.x - playerPos.x;
+                const doorDz = door.z - playerPos.z;
+                const doorDist = Math.sqrt(doorDx * doorDx + doorDz * doorDz);
+
+                if (doorDist < 2.0) {
+                    door.isOpen = true;
+                    scene.remove(door.mesh);
+                    showMessage("Door opened");
+                }
+            }
         }
 
         function isWall(x, z) {
@@ -2074,10 +2139,19 @@
                     if (mem < MEMORY_MIN_VISIBLE) continue; // fully unknown
 
                     const alpha = mem;
-                    if (map[z] && map[z][x] === 1) {
-                        ctx.fillStyle = `rgba(68,68,68,${alpha})`;
+                    const cell = map[z] && map[z][x];
+                    if (cell === 1) {
+                        ctx.fillStyle = `rgba(68,68,68,${alpha})`; // wall
+                    } else if (cell === 2) {
+                        // Door - check if open or closed
+                        const doorObj = doors.find(d => d.gridX === x && d.gridZ === z);
+                        if (doorObj && !doorObj.isOpen) {
+                            ctx.fillStyle = `rgba(139,90,43,${alpha})`; // closed door (brown)
+                        } else {
+                            ctx.fillStyle = `rgba(34,34,34,${alpha})`; // open door (floor)
+                        }
                     } else {
-                        ctx.fillStyle = `rgba(34,34,34,${alpha})`;
+                        ctx.fillStyle = `rgba(34,34,34,${alpha})`; // floor
                     }
                     ctx.fillRect(x * scale, z * scale, scale, scale);
                 }
